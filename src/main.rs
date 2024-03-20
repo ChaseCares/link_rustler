@@ -899,7 +899,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
         match link_checker(&config, args.check_this_url).await {
             Ok(()) => {}
-            Err(e) => println!("Error: {e:?}"),
+            Err(e) => anyhow::bail!("{e:?}"),
         }
     }
 
