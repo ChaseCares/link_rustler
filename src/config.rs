@@ -43,15 +43,16 @@ pub fn config(args: &Args) -> anyhow::Result<Config> {
                 .with_context(|| "Failed to serialize default config")?,
         )
         .with_context(|| format!("Failed to write to config file {default_config_path:?}"))?;
-        panic!("No config file found, default config file created at ./data/config.toml");
+        anyhow::bail!("No config file found, default config file created here: ./data/config.toml");
     }
 
     let mut config: Config = config.unwrap();
 
-    assert!(
-        !(config == default_config),
-        "Default config file found at ./data/config.toml, please update it with your settings"
-    );
+    if config == default_config {
+        anyhow::bail!(
+            "Please edit the config file at ./data/config.toml before running the program"
+        );
+    }
 
     if let Some(pdf_path) = &args.pdf_path {
         config.pdf_path = Some(pdf_path.clone());

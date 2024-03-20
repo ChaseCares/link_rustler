@@ -127,23 +127,21 @@ async fn get_pdf_github(url: Url) -> anyhow::Result<String> {
 }
 
 #[instrument]
-async fn get_extension_github(
+async fn github_api_request(
     github_username: &String,
-    repo: &String,
-    extension_name: &String,
-    extensions_dir: &String,
-) -> anyhow::Result<String> {
-    let url = format!("https://api.github.com/repos/{repo}/{extension_name}/releases/latest");
+    repo_owner: &String,
+    repo_name: &String,
+    client: Option<Client>,
+) -> anyhow::Result<Value> {
+    let url = format!("https://api.github.com/repos/{repo_owner}/{repo_name}/releases/latest");
+    let client = match client {
+        Some(client) => client,
+        None => Client::builder()
+            .user_agent(github_username)
+            .build()
+            .context("Failed to create HTTP client")?,
+    };
 
-    let output_dir = Path::new(extensions_dir).join(extension_name);
-    if output_dir.exists() && output_dir.metadata()?.created()?.elapsed()?.as_secs() < 86400 {
-        return Ok("Extension was checked within the last 24 hours".to_string());
-    }
-
-    let client = Client::builder()
-        .user_agent(github_username)
-        .build()
-        .context("Failed to create HTTP client")?;
     let res = client
         .get(&url)
         .send()
@@ -154,6 +152,55 @@ async fn get_extension_github(
         .context("Failed to get response body")?;
     let json: Value = serde_json::from_str(&res).context("Failed to parse JSON response")?;
 
+    Ok(json)
+}
+
+#[instrument]
+async fn check_for_update(
+    current_version: &String,
+    github_username: &String,
+    repo_owner: &String,
+    repo_name: &String,
+) -> anyhow::Result<String> {
+    let json = github_api_request(github_username, repo_owner, repo_name, None).await?;
+
+    let latest_version = json["tag_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Failed to get latest version"))?;
+
+    info!("Latest version: {}", latest_version);
+
+    if latest_version == current_version {
+        return Ok("Extension is up to date".to_string());
+    }
+
+    anyhow::bail!("App is out of date")
+}
+
+#[instrument]
+async fn get_extension_github(
+    github_username: &String,
+    repo_owner: &String,
+    extension_name: &String,
+    extensions_dir: &String,
+) -> anyhow::Result<String> {
+    let output_dir = Path::new(extensions_dir).join(extension_name);
+    if output_dir.exists() && output_dir.metadata()?.created()?.elapsed()?.as_secs() < 86400 {
+        return Ok("Extension was checked within the last 24 hours".to_string());
+    }
+
+    let client = Client::builder()
+        .user_agent(github_username)
+        .build()
+        .context("Failed to create HTTP client")?;
+
+    let json = github_api_request(
+        github_username,
+        repo_owner,
+        extension_name,
+        Some(client.clone()),
+    )
+    .await?;
     let asset = json["assets"]
         .as_array()
         .and_then(|assets| {
@@ -605,7 +652,7 @@ async fn check_link(
 
             if config.keep_local_records {
                 if let Err(err) = save_page_data(url, config, &page_source, &img) {
-                    panic!("Failed to save page data: {err:?}");
+                    panic!("Failed to save page data: {err:?}"); // TODO: Replace with proper error handling
                 }
             }
 
@@ -808,10 +855,17 @@ struct Args {
 
     #[arg(long)]
     check_this_url: Option<Vec<String>>,
+
+    #[arg(long, default_value = "true")]
+    check_for_update: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    const NAME: &str = env!("CARGO_PKG_NAME");
+    const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
+
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
@@ -821,8 +875,24 @@ async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
     let config = match config::config(&args) {
         Ok(config) => config,
-        Err(e) => return Err(anyhow::anyhow!("Error: {e:?}")),
+        Err(e) => return Err(anyhow::anyhow!(e.to_string())),
     };
+
+    if args.check_for_update {
+        if let Some(username) = &config.github_username {
+            match check_for_update(
+                &VERSION.to_string(),
+                username,
+                &AUTHOR.to_string(),
+                &NAME.to_string(),
+            )
+            .await
+            {
+                Ok(msg) => info!("{msg}"),
+                Err(e) => error!("{e:?}"),
+            }
+        }
+    }
 
     if config.check_links {
         storage(args.clean_start, &config);
