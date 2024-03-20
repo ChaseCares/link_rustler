@@ -1,0 +1,28 @@
+[package]
+name = "link_rustler"
+version = "0.1.0"
+edition = "2021"
+authors = ["Chase C"]
+
+[dependencies]
+chrono = { version = "0.4.35", features = ["now"] }
+clap = { version = "4.5.3", features = ["derive"] }
+serde = { version = "1.0.197", features = ["derive"] }
+tokio = { version = "1.36.0", features = ["full"] }
+url = { version = "2.5.0", features = ["serde"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+blake2 = "0.10.6"
+image = "0.25.0"
+image_hasher = "2.0.0"
+regex = "1.10.3"
+reqwest = "0.11.27"
+serde_json = "1.0.114"
+thirtyfour = "0.31.0"
+flate2 = "1.0.28"
+html-builder = "0.5.1"
+toml = "0.8.12"
+humantime-serde = "1.1.1"
+anyhow = "1.0.81"
+open = "5.1.2"
+tracing = "0.1.40"
