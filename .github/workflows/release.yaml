@@ -15,7 +15,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create ${{ github.ref_name }}
-  assets:
+  compile-binaries:
     permissions:
       contents: write
     needs: release
@@ -48,10 +48,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
-      - run: cargo install cross --git https://github.com/cross-rs/cross
-      - run: ${{ matrix.command }} build --release --target ${{ matrix.target }}
-      # 7z is available on all runners.
-      # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software
+      - run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+          ${{ matrix.command }} build --release --target ${{ matrix.target }}
+
       - name: Create archive
         id: archive
         shell: bash
