@@ -757,7 +757,7 @@ async fn check_links(
                 let marker = page_datas
                     .get(&url)
                     .map(|page_data| page_data.marker())
-                    .unwrap();
+                    .unwrap_or_default();
 
                 let state = check_link(&driver, &url, marker, config, linktype).await;
                 safely_close_window(&driver, &url).await?;
@@ -783,7 +783,7 @@ async fn check_links(
         let marker = page_datas
             .get(&url)
             .map(|page_data| page_data.marker())
-            .unwrap();
+            .unwrap_or_default();
 
         let state = check_link(&driver, &url, marker, config, linktype).await;
         safely_close_window(&driver, &url).await?;
