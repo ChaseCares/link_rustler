@@ -50,7 +50,7 @@ pub fn config(args: &Args) -> anyhow::Result<Config> {
 
     if config == default_config {
         anyhow::bail!(
-            "Please edit the config file at ./data/config.toml before running the program"
+            "Please edit the config file here: ./data/config.toml before running the program"
         );
     }
 

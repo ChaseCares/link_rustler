@@ -398,7 +398,7 @@ async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebDrive
     let ip = &config.gecko.ip;
     let port = config.gecko.port;
 
-    let process = Command::new("geckodriver")
+    let process = Command::new(config.gecko.binary.clone())
         .arg("--port")
         .arg(port.to_string())
         .arg("--host")
