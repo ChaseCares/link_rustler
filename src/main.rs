@@ -810,7 +810,7 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
 
     let driver = match fire_up_and_setup_the_gecko(config).await {
         Ok(driver) => driver,
-        Err(e) => return Err(anyhow::anyhow!("Error: {:?}", e)),
+        Err(e) => return Err(anyhow::anyhow!(e)),
     };
 
     let results = check_links(driver, urls_to_check, page_datas.clone(), config)
