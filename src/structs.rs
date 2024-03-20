@@ -135,7 +135,7 @@ impl Default for Config {
             keep_local_records: true,
             check_links: true,
             gen_report: true,
-            page_dwell_time: std::time::Duration::from_secs(45),
+            page_dwell_time: Duration::from_secs(45),
             num_of_local_pages: 2,
             gecko: GeckoConfig::default(),
             extensions: Some(vec![Extensions::default()]),

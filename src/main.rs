@@ -95,7 +95,7 @@ async fn get_pdf_github(url: Url) -> anyhow::Result<String> {
         .iter()
         .filter(|item| {
             item["path"].as_str().map_or(false, |path| {
-                std::path::Path::new(path)
+                Path::new(path)
                     .extension()
                     .map_or(false, |ext| ext.eq_ignore_ascii_case("pdf"))
             })
@@ -159,7 +159,7 @@ async fn get_extension_github(
         .and_then(|assets| {
             assets.iter().find(|asset| {
                 asset["name"].as_str().map_or(false, |name| {
-                    std::path::Path::new(name)
+                    Path::new(name)
                         .extension()
                         .map_or(false, |ext| ext.eq_ignore_ascii_case("xpi"))
                 })
@@ -310,7 +310,7 @@ async fn get_urls(
         given_urls
             .iter()
             .map(|url| Url::parse(url))
-            .filter_map(std::result::Result::ok)
+            .filter_map(Result::ok)
             .collect()
     } else if let Some(pdf_path) = pdf_path {
         let pdf = pdf_contents(&pdf_path)?;
@@ -341,7 +341,7 @@ fn get_unique_links(raw_pdf: &[u8]) -> HashSet<Url> {
             std::str::from_utf8(capture.get(1).unwrap().as_bytes()).expect("Invalid UTF-8")
         })
         .map(Url::parse)
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .collect();
     raw_links
 }
@@ -540,7 +540,7 @@ fn save_page_data(
 
     if let Ok(old_files) = fs::read_dir(&save_data_path) {
         let files: Vec<_> = old_files
-            .filter_map(std::result::Result::ok)
+            .filter_map(Result::ok)
             .filter(|entry| {
                 let path = entry.path();
                 path.extension()
