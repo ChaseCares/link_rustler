@@ -1,25 +1,62 @@
-# https://github.com/rust-build/rust-build.action
+# https://github.com/open-contracting/cardinal-rs/blob/main/.github/workflows/release.yml
 
+name: Release
 on:
-  release:
-    types: [created]
-
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
 jobs:
   release:
-    name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-apple-darwin
-            archive: zip
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }}
+  assets:
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # Include all "Tier 1 with Host Tools" targets and "Tier 2 with Host Tools" targets for Windows and macOS,
+        # excluding *-pc-windows-msvc, which requires cross-toolchains. Goal is one option per OS per architecture.
+        # https://doc.rust-lang.org/rustc/platform-support.html
+        # https://github.com/cross-rs/cross#supported-targets
+        # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
+        include:
+          - build: macos-64-bit
+            os: macos-latest
+            target: x86_64-apple-darwin
+            command: cargo
+
+          - build: macos-arm
+            os: macos-latest
+            target: aarch64-apple-darwin
+            command: cargo
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          targets: ${{ matrix.target }}
+      - run: cargo install cross --git https://github.com/cross-rs/cross
+      - run: ${{ matrix.command }} build --release --target ${{ matrix.target }}
+      # 7z is available on all runners.
+      # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software
+      - name: Create archive
+        id: archive
+        shell: bash
+        run: |
+          DIRECTORY="ocdscardinal-${{ github.ref_name }}-${{ matrix.build }}"
+          if [[ "${{ matrix.target }}" =~ "-pc-windows-" ]]; then
+            SUFFIX=".exe"
+          else
+            SUFFIX=""
+          fi
+          mkdir "$DIRECTORY"
+          cp docs/changelog.md LICENSE README.md "target/${{ matrix.target }}/release/ocdscardinal$SUFFIX" "$DIRECTORY"
+          7z a "$DIRECTORY.zip" "$DIRECTORY"
+          echo "path=$DIRECTORY.zip" >> $GITHUB_OUTPUT
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.ref_name }} ${{ steps.archive.outputs.path }}
