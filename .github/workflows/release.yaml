@@ -7,6 +7,8 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 jobs:
   release:
+    permissions:
+      contents: write # for actions/upload-release-asset to upload release asset
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,7 +56,7 @@ jobs:
             SUFFIX=""
           fi
           mkdir "$DIRECTORY"
-          cp docs/changelog.md LICENSE README.md "target/${{ matrix.target }}/release/ocdscardinal$SUFFIX" "$DIRECTORY"
+          cp "target/${{ matrix.target }}/release/ocdscardinal$SUFFIX" "$DIRECTORY"
           7z a "$DIRECTORY.zip" "$DIRECTORY"
           echo "path=$DIRECTORY.zip" >> $GITHUB_OUTPUT
       - env:
