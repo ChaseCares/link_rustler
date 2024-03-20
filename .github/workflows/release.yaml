@@ -16,6 +16,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release create ${{ github.ref_name }}
   assets:
+    permissions:
+      contents: write
     needs: release
     runs-on: ${{ matrix.os }}
     strategy:
