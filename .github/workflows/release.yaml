@@ -5,17 +5,19 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+
 jobs:
   release:
     permissions:
-      contents: write # for actions/upload-release-asset to upload release asset
+      # for actions/upload-release-asset to upload release assets
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create ${{ github.ref_name }}
-  compile-binaries:
+  compile-assets:
     permissions:
       contents: write
     needs: release
@@ -28,16 +30,6 @@ jobs:
         # https://github.com/cross-rs/cross#supported-targets
         # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources
         include:
-          # - build: linux-64-bit
-          #   os: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   command: cross
-
-          # - build: macos-64-bit
-          #   os: macos-latest
-          #   target: x86_64-apple-darwin
-          #   command: cargo
-
           - build: macos-arm
             os: macos-latest
             target: aarch64-apple-darwin
