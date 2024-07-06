@@ -45,7 +45,7 @@ impl AppState {
             self_update_log: String::new(),
             geckodriver_update_log: String::new(),
             config_log: String::new(),
-            self_update: false,
+            self_update: true,
             continue_after_close: false,
         }
     }
