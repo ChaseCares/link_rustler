@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["ChaseCares"]
 
 [dependencies]
+openssl = { version = "0.10.64", features = ["vendored"] }
 chrono = { version = "0.4.38", features = ["now"] }
 clap = { version = "4.5.8", features = ["derive"] }
 serde = { version = "1.0.203", features = ["derive"] }
