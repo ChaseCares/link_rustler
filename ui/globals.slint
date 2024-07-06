@@ -1,0 +1,37 @@
+export global Globals {
+    property <string> border-radius: "5px";
+}
+
+export global UpdateCheck {
+    in property <string> self_update_button_text: "Check for Update";
+    in property <string> self_update_log;
+
+    in property <string> geckodriver_update_button_text: "Check for Update";
+    in property <string> geckodriver_update_log;
+
+    in property <bool> actively_checking_for_update: false;
+
+    callback self_check_update();
+    callback geckodriver_check_update();
+}
+
+export struct ConfigProperty {
+    FriendlyName: string,
+    Key: string,
+    Value: string,
+    DisplaType: string,
+    Advanced: bool,
+}
+
+export global Settings {
+    in property <bool> config_saved: true;
+    in property <bool> config_ready: false;
+    in property <string> config_log;
+
+    in property <[ConfigProperty]> config_propertys;
+
+    property <string> error;
+
+    callback update_config_value(string, string) -> string;
+    callback write_config();
+}

@@ -9,9 +9,8 @@ use std::{fs::OpenOptions, path::Path};
 use html_builder::{Buffer, Html5, Node};
 
 use crate::common::hash_string;
-use crate::structs::{
-    DiffReport, InvalidReason, Mode, PageData, ReportTableDataRow, State, Tables, ValidReason,
-};
+use crate::enums::{InvalidReason, ValidReason};
+use crate::structs::{DiffReport, Mode, PageData, ReportTableDataRow, State, Tables};
 
 const NUM_VALID: usize = 8;
 const NUM_INVALID: usize = 5;
@@ -212,6 +211,7 @@ fn save_report(config: &crate::structs::Config, root_buf: Buffer) {
     let mut report_file = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open(Path::new(report_file_path))
         .expect("Could not open report file");
 

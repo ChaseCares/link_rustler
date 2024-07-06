@@ -1,0 +1,144 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit, GridBox, ScrollView, CheckBox } from "std-widgets.slint";
+
+import { Globals, Settings } from "globals.slint";
+
+export component SettingsView {
+
+    property <bool> show_advanced: false;
+    property <string> error;
+    property <duration> duration: 300ms;
+
+    HorizontalBox {
+        VerticalBox {
+            padding: 0px;
+
+            GridBox {
+                Row {
+                    Text {
+                        color: Settings.config_saved ? green : red;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                        min-width: 200px;
+                        font-size: 20px;
+
+                        text: Settings.config_saved ? "Config Saved" : "Config Not Saved";
+                    }
+
+                    Button {
+                        enabled: !Settings.config_saved;
+
+                        text: "Save Config";
+
+                        clicked => {
+                            Settings.write_config();
+                        }
+                    }
+
+                    Button {
+                        text: "Show Advanced";
+
+                        clicked => {
+                            show_advanced = !show_advanced;
+                        }
+                    }
+                }
+            }
+
+            Text {
+                height: error == "" ? 0px : 20px;
+                color: red;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                text: error;
+
+                animate height {
+                    duration: root.duration;
+                    easing: ease-in-out;
+                }
+            }
+
+            VerticalLayout {
+                for config in Settings.config_propertys: HorizontalBox {
+                    padding: 2px;
+
+                    height: (!config.Advanced || show_advanced) ? 30px : 0px;
+
+                    animate height {
+                        duration: 300ms;
+                        easing: ease-in-out;
+                    }
+
+                    Text {
+                        min-width: 200px;
+
+                        text: config.FriendlyName;
+                    }
+
+                    if (config.DisplaType == "string" || config.DisplaType == "num"): le := LineEdit {
+                        text: config.Value;
+
+                        edited => {
+                            error = Settings.update_config_value(config.Key, le.text);
+                        }
+                        accepted => {
+                            error = Settings.update_config_value(config.Key, le.text);
+                            Settings.write_config();
+                        }
+                    }
+
+                    if (config.DisplaType == "bool"): cb := CheckBox {
+                        checked: config.Value == "true";
+
+                        toggled => {
+                            Settings.update_config_value(config.Key, cb.checked ? "true" : "false");
+                            Settings.write_config();
+                        }
+                    }
+                }
+            }
+
+            HorizontalBox {
+                padding: 0px;
+
+                Text {
+                    height: 20px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+
+                    text: "Log";
+                }
+            }
+
+            Rectangle {
+                border-color: #808080;
+                border-width: 2px;
+                border-radius: 5px;
+                background: #3b3b3b;
+                preferred-width: 750px;
+                min-width: 600px;
+                min-height: !show_advanced ? 300px : 0px;
+
+                animate min-height {
+                    duration: root.duration;
+                    easing: ease-in-out;
+                }
+
+                ScrollView {
+                    Rectangle {
+                        min-width: parent.width - 15px;
+                        min-height: parent.height - 10px;
+
+                        Text {
+                            x: 8px;
+                            y: 8px;
+                            horizontal-alignment: left;
+                            vertical-alignment: top;
+
+                            text: "Settings.config_log";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

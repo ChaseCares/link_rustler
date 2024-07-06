@@ -1,22 +1,82 @@
 use std::{io::Write, time::Duration};
 
+use clap::Parser;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use image_hasher::ImageHash;
 use serde::{Deserialize, Serialize};
+use slint::ComponentHandle;
 use tokio::time::Instant;
 use url::Url;
 
 use crate::common::{hash_img, hash_string};
+use crate::enums::{CustomError, InvalidReason, LinkType, ValidReason};
+use crate::MainWindow;
+
+use crate::{Settings, UpdateCheck};
+
+#[derive(Parser, Debug)]
+pub struct Args {
+    #[arg(short, long)]
+    pub config_path: Option<String>,
+
+    #[arg(long)]
+    pub clean_start: bool,
+
+    #[arg(long)]
+    pub check_this_url: Option<Vec<String>>,
+
+    #[arg(long, default_value = "false")]
+    pub check_for_update: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppState {
+    pub self_update_log: String,
+    pub geckodriver_update_log: String,
+    pub config_log: String,
+    pub self_update: bool,
+    pub continue_after_close: bool,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            self_update_log: String::new(),
+            geckodriver_update_log: String::new(),
+            config_log: String::new(),
+            self_update: false,
+            continue_after_close: false,
+        }
+    }
+
+    pub fn add_to_self_update_log(&mut self, message: &str, ui: &MainWindow) {
+        self.self_update_log
+            .push_str(format!("{}\n", message).as_str());
+        ui.global::<UpdateCheck>()
+            .set_self_update_log(self.self_update_log.clone().into());
+    }
+    pub fn add_to_geckodriver_update_log(&mut self, message: &str, ui: &MainWindow) {
+        self.geckodriver_update_log
+            .push_str(format!("{}\n", message).as_str());
+        ui.global::<UpdateCheck>()
+            .set_geckodriver_update_log(self.geckodriver_update_log.clone().into());
+    }
+    pub fn add_to_config_log(&mut self, message: &str, ui: &MainWindow) {
+        self.config_log.push_str(format!("{}\n", message).as_str());
+        ui.global::<Settings>()
+            .set_config_log(self.config_log.clone().into());
+    }
+}
 
 #[derive(Debug)]
-pub(crate) struct Mode<T> {
+pub struct Mode<T> {
     pub value: Option<T>,
     pub confidence: Option<usize>,
 }
 
 #[derive(Debug)]
-pub(crate) struct DiffReport {
+pub struct DiffReport {
     pub page_hash: Mode<String>,
     pub compression: Mode<usize>,
     pub title: Mode<String>,
@@ -24,7 +84,7 @@ pub(crate) struct DiffReport {
 }
 
 #[derive(Debug)]
-pub(crate) struct ReportTableDataRow {
+pub struct ReportTableDataRow {
     pub url: Url,
     pub marker: String,
     pub errors: Option<CustomError>,
@@ -33,7 +93,7 @@ pub(crate) struct ReportTableDataRow {
 }
 
 #[derive(Debug)]
-pub(crate) struct Tables {
+pub struct Tables {
     pub valid: Vec<ReportTableDataRow>,
     pub unknown: Vec<ReportTableDataRow>,
     pub hash_only: Vec<ReportTableDataRow>,
@@ -41,7 +101,7 @@ pub(crate) struct Tables {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct Storage {
+pub struct Storage {
     pub base_dir: String,
     pub project_subdir: String,
     pub pages_subdir: String,
@@ -52,7 +112,7 @@ pub(crate) struct Storage {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct Extensions {
+pub struct Extensions {
     pub repo: String,
     pub name: String,
 }
@@ -67,7 +127,10 @@ impl Default for Extensions {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct GeckoConfig {
+pub struct GeckoConfig {
+    pub version: String,
+    pub arch: String,
+    pub location: String,
     pub binary: String,
     pub headless: bool,
     pub width: u32,
@@ -83,6 +146,9 @@ pub(crate) struct GeckoConfig {
 impl Default for GeckoConfig {
     fn default() -> Self {
         GeckoConfig {
+            version: "0.34.0".to_string(),
+            arch: "macos-aarch64".to_string(),
+            location: "default".to_string(), // "default" or "custom"
             binary: "geckodriver".to_string(),
             headless: true,
             width: 1080,
@@ -96,9 +162,9 @@ impl Default for GeckoConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct Config {
+pub struct Config {
     pub github_username: Option<String>,
-    pub url: Option<Url>,
+    pub pdf_url: Option<Url>,
     pub num_of_local_pages: usize,
     pub keep_local_records: bool,
     pub check_links: bool,
@@ -118,7 +184,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             github_username: Some(()).map(|()| "Awesome-Octocat-App".to_string()),
-            url: Some(()).map(|()| Url::parse("https://github.com/").unwrap()),
+            pdf_url: Some(()).map(|()| Url::parse("https://github.com/").unwrap()),
             pdf_path: None,
             screenshot_diff_confidence: 60,
             screenshot_diff_tolerance: 3,
@@ -143,70 +209,58 @@ impl Default for Config {
     }
 }
 
+impl Config {
+    pub fn update(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
+        match key {
+            "github_username" => self.github_username = Some(value.to_string()),
+            "pdf_url" => self.pdf_url = Some(Url::parse(value)?),
+            "num_of_local_pages" => self.num_of_local_pages = value.parse()?,
+            "keep_local_records" => self.keep_local_records = value.parse()?,
+            "check_links" => self.check_links = value.parse()?,
+            "gen_report" => self.gen_report = value.parse()?,
+            "screenshot_diff_confidence" => self.screenshot_diff_confidence = value.parse()?,
+            "screenshot_diff_tolerance" => self.screenshot_diff_tolerance = value.parse()?,
+            "compression_length_tolerance" => self.compression_length_tolerance = value.parse()?,
+            "page_dwell_time" => self.page_dwell_time = Duration::from_secs(value.parse()?),
+            "pdf_path" => self.pdf_path = Some(value.to_string()),
+            "gecko_version" => self.gecko.version = value.to_string(),
+            "gecko_arch" => self.gecko.arch = value.to_string(),
+            "gecko_location" => self.gecko.location = value.to_string(),
+            "gecko_binary" => self.gecko.binary = value.to_string(),
+            "gecko_headless" => self.gecko.headless = value.parse()?,
+            "gecko_width" => self.gecko.width = value.parse()?,
+            "gecko_height" => self.gecko.height = value.parse()?,
+            "gecko_ip" => self.gecko.ip = value.to_string(),
+            "gecko_port" => self.gecko.port = value.parse()?,
+            "gecko_page_load_timeout" => {
+                self.gecko.page_load_timeout = Duration::from_secs(value.parse()?)
+            }
+            "gecko_script_timeout" => {
+                self.gecko.script_timeout = Duration::from_secs(value.parse()?)
+            }
+            "base_dir" => self.dirs.base_dir = value.to_string(),
+            "project_subdir" => self.dirs.project_subdir = value.to_string(),
+            "pages_subdir" => self.dirs.pages_subdir = value.to_string(),
+            "temp_subdir" => self.dirs.temp_subdir = value.to_string(),
+            "extensions_subdir" => self.dirs.extensions_subdir = value.to_string(),
+            "data_store" => self.dirs.data_store = value.to_string(),
+            "report" => self.dirs.report = value.to_string(),
+            _ => (),
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct ActivePages {
+pub struct ActivePages {
     pub url: Url,
     pub time_added: Instant,
     pub linktype: LinkType,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum LinkType {
-    Generic,
-    Content,
-    Unknown,
-    Local,
-    Mailto,
-    InternalError,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
-pub(crate) struct Validity {
-    pub valid: Option<Vec<ValidReason>>,
-    pub invalid: Option<Vec<InvalidReason>>,
-    pub error: Option<CustomError>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum ValidReason {
-    CompressionExact,
-    CompressionWithinTolerance,
-    ScreenshotHashExact,
-    ScreenshotHashWithinTolerance,
-    PageHash,
-    Title,
-    Marker,
-    Type,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum InvalidReason {
-    Compression,
-    PageHash,
-    ScreenshotHash,
-    Title,
-    Type,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum CustomError {
-    InsecureCertificate,
-    Redirected,
-    BadTitle,
-    MarkerNotFound,
-    UnknownLinkType,
-    LinkTypeLocal,
-    LinkTypeMailto,
-    BadScreenshot,
-    PageNotFound,
-    PageError,
-    Marker,
-    Warning,
-    WebDriverError,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct State {
+pub struct State {
     pub hash: String,
     pub compress_length: usize,
     pub screenshot_hash: Option<String>,
@@ -217,7 +271,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) fn new(
+    pub fn new(
         content: &str,
         screenshot: Option<image::DynamicImage>,
         title: Option<String>,
@@ -242,7 +296,7 @@ impl State {
         }
     }
 
-    pub(crate) fn cal_screenshot_similarity(&self, screenshot_hash: Option<String>) -> Option<u32> {
+    pub fn cal_screenshot_similarity(&self, screenshot_hash: Option<String>) -> Option<u32> {
         if self.screenshot_hash.is_some() {
             let original_screenshot: ImageHash<Box<[u8]>> =
                 ImageHash::from_base64(self.screenshot_hash.as_ref().unwrap().as_str()).unwrap();
@@ -256,7 +310,7 @@ impl State {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub(crate) struct PageData {
+pub struct PageData {
     pub marker: Option<String>,
     pub reference_state: Option<State>,
     pub last_checked: chrono::DateTime<chrono::Utc>,
@@ -265,7 +319,7 @@ pub(crate) struct PageData {
 }
 
 impl PageData {
-    pub(crate) fn new(state: State, url_hash: String, marker: Option<String>) -> Self {
+    pub fn new(state: State, url_hash: String, marker: Option<String>) -> Self {
         PageData {
             marker,
             reference_state: None,
@@ -275,7 +329,7 @@ impl PageData {
         }
     }
 
-    pub(crate) fn update(&mut self, new_state: State) {
+    pub fn update(&mut self, new_state: State) {
         loop {
             if self.history.len() <= 5 {
                 break;
@@ -287,11 +341,11 @@ impl PageData {
         self.history.push(new_state);
     }
 
-    pub(crate) fn current_state(&self) -> Vec<State> {
+    pub fn current_state(&self) -> Vec<State> {
         self.history.clone()
     }
 
-    pub(crate) fn marker(&self) -> Option<&String> {
+    pub fn marker(&self) -> Option<&String> {
         self.marker.as_ref()
     }
 }

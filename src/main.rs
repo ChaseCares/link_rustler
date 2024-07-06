@@ -1,116 +1,64 @@
-#![deny(
+#![warn(
     clippy::all,
-    clippy::pedantic,
-    missing_debug_implementations,
-    trivial_casts,
-    trivial_numeric_casts,
     unsafe_code,
     unused_extern_crates,
-    unused_import_braces,
-    unused_qualifications,
-    unused_results
+    // slint forces these to be disabled :(
+    // unused_results
+    // unused_import_braces,
+    // unused_qualifications,
+    // clippy::pedantic,
+    // missing_debug_implementations,
+    // trivial_casts,
+    // trivial_numeric_casts,
 )]
 
-use std::collections::{BTreeMap, HashSet};
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
-use std::process::{Command, Stdio};
 use std::time::Duration;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+    rc::Rc,
+};
 
-use anyhow::{anyhow, Context};
-use chrono::Utc;
+use anyhow::Context;
 use clap::Parser;
+use driver::new_tab;
 use reqwest::{Client, Url};
-use serde_json::Value;
-use thirtyfour::extensions::addons::firefox::FirefoxTools;
-use thirtyfour::{FirefoxCapabilities, WebDriver};
-use tokio::time::{sleep, Instant};
-use tracing::{error, info, instrument, warn};
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
-use structs::{ActivePages, Config, CustomError, LinkType, PageData, State};
+use slint::ComponentHandle;
+use thirtyfour::WebDriver;
+use tokio::time::{sleep, Instant};
+use tracing::{error, info, instrument, warn, Level};
+use tracing_subscriber::FmtSubscriber;
+
+slint::include_modules!();
+
+use enums::{CustomError, LinkType};
+use structs::{ActivePages, AppState, Args, Config, PageData, State};
 
 mod common;
 mod config;
+mod disc_op;
+mod driver;
+mod enums;
 mod report;
 mod structs;
-
-fn storage(clean_start: bool, config: &Config) {
-    let project_dir = &format!(
-        "./{}/{}",
-        &config.dirs.base_dir, &config.dirs.project_subdir
-    );
-
-    if clean_start {
-        if let Err(err) = fs::remove_dir_all(project_dir) {
-            error!("Failed to remove {:?}: {:?}", project_dir, err);
-        } else {
-            info!("Removed project directory: {:?}", project_dir);
-        }
-    }
-
-    let dirs = [
-        &format!("{}/{}", project_dir, &config.dirs.pages_subdir),
-        &format!("{}/{}", project_dir, &config.dirs.temp_subdir),
-    ];
-
-    for dir in &dirs {
-        if let Err(err) = fs::create_dir_all(dir) {
-            error!("Failed to create {dir:?}: {err:?}");
-        } else {
-            info!("Created directory: {dir:?}");
-        }
-    }
-}
+mod update;
 
 #[instrument]
 async fn get_pdf_github(url: Url) -> anyhow::Result<String> {
     let client = Client::new();
 
-    let res = client
-        .get(url.clone())
-        .send()
-        .await
-        .context("Failed to send request to GitHub API")?
-        .text()
-        .await
-        .context("Failed to get response body")?;
+    let split_path = url.path().split('/').collect::<Vec<&str>>();
 
-    let json: Value = serde_json::from_str(&res).context("Failed to parse JSON response")?;
+    let repo_owner = split_path[1];
+    let repo_name = split_path[2];
+    let branch = split_path[4];
+    let file_path = split_path[5..].join("/");
 
-    let repo_owner = json["payload"]["repo"]["ownerLogin"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get repository owner"))?;
-
-    let repo_name = json["payload"]["repo"]["name"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get repository name"))?;
-
-    let items = json["payload"]["tree"]["items"]
-        .as_array()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get PDF items"))?;
-
-    let pdfs: Vec<&Value> = items
-        .iter()
-        .filter(|item| {
-            item["path"].as_str().map_or(false, |path| {
-                Path::new(path)
-                    .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("pdf"))
-            })
-        })
-        .collect();
-
-    if pdfs.len() != 1 {
-        return Err(anyhow::anyhow!("Expected 1 PDF, found {}", pdfs.len()));
-    }
-
-    let pdf_path = pdfs[0]["path"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get PDF path"))?;
-
-    let pdf_url = format!("https://github.com/{repo_owner}/{repo_name}/raw/main/{pdf_path}");
+    let pdf_url = format!("https://github.com/{repo_owner}/{repo_name}/raw/{branch}/{file_path}");
 
     let pdf = client
         .get(&pdf_url)
@@ -121,131 +69,9 @@ async fn get_pdf_github(url: Url) -> anyhow::Result<String> {
         .await
         .context("Failed to read PDF content")?;
 
-    info!("Successfully retrieved PDF from GitHub");
+    info!("PDF fetched successfully from: {}", pdf_url);
 
     Ok(pdf)
-}
-
-#[instrument]
-async fn github_api_request(
-    github_username: &String,
-    repo_owner: &String,
-    repo_name: &String,
-    client: Option<Client>,
-) -> anyhow::Result<Value> {
-    let url = format!("https://api.github.com/repos/{repo_owner}/{repo_name}/releases/latest");
-    let client = match client {
-        Some(client) => client,
-        None => Client::builder()
-            .user_agent(github_username)
-            .build()
-            .context("Failed to create HTTP client")?,
-    };
-
-    let res = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to send request to GitHub API")?
-        .text()
-        .await
-        .context("Failed to get response body")?;
-    let json: Value = serde_json::from_str(&res).context("Failed to parse JSON response")?;
-
-    Ok(json)
-}
-
-#[instrument]
-async fn check_for_update(
-    current_version: &String,
-    github_username: &String,
-    repo_owner: &String,
-    repo_name: &String,
-) -> anyhow::Result<String> {
-    let json = github_api_request(github_username, repo_owner, repo_name, None).await?;
-
-    let latest_version = json["tag_name"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get latest version"))?;
-
-    info!("Latest version: {}", latest_version);
-
-    if latest_version == current_version {
-        return Ok("Extension is up to date".to_string());
-    }
-
-    anyhow::bail!("App is out of date")
-}
-
-#[instrument]
-async fn get_extension_github(
-    github_username: &String,
-    repo_owner: &String,
-    extension_name: &String,
-    extensions_dir: &String,
-) -> anyhow::Result<String> {
-    let output_dir = Path::new(extensions_dir).join(extension_name);
-    if output_dir.exists() && output_dir.metadata()?.created()?.elapsed()?.as_secs() < 86400 {
-        return Ok("Extension was checked within the last 24 hours".to_string());
-    }
-
-    let client = Client::builder()
-        .user_agent(github_username)
-        .build()
-        .context("Failed to create HTTP client")?;
-
-    let json = github_api_request(
-        github_username,
-        repo_owner,
-        extension_name,
-        Some(client.clone()),
-    )
-    .await?;
-    let asset = json["assets"]
-        .as_array()
-        .and_then(|assets| {
-            assets.iter().find(|asset| {
-                asset["name"].as_str().map_or(false, |name| {
-                    Path::new(name)
-                        .extension()
-                        .map_or(false, |ext| ext.eq_ignore_ascii_case("xpi"))
-                })
-            })
-        })
-        .ok_or_else(|| anyhow::anyhow!("Failed to find the extension asset"))?;
-
-    let official_name = asset["name"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get extension name"))?;
-
-    let output_file = output_dir.join(official_name);
-    if output_file.exists() {
-        return Ok("Extension already exists".to_string());
-    } else if output_dir.exists() {
-        fs::remove_dir_all(&output_dir).context("Failed to remove existing output directory")?;
-    }
-
-    fs::create_dir_all(&output_dir).context("Failed to create output directory")?;
-    let extension_url = asset["browser_download_url"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Failed to get extension URL"))?;
-    let mut response = client
-        .get(extension_url)
-        .send()
-        .await
-        .context("Failed to download extension")?;
-
-    let mut file = File::create(output_file).context("Failed to create output file")?;
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .context("Failed to read response chunk")?
-    {
-        file.write_all(&chunk)
-            .context("Failed to write to output file")?;
-    }
-    info!("Extension downloaded successfully");
-    return Ok("Extension downloaded".to_string());
 }
 
 fn pdf_contents(pdf_path: &str) -> anyhow::Result<Vec<u8>> {
@@ -272,58 +98,6 @@ async fn download_file(url: String) -> Option<String> {
         Ok(_) => Some(res.unwrap()),
         Err(_) => None,
     }
-}
-
-fn load_data_store(path_str: &str) -> anyhow::Result<BTreeMap<Url, PageData>> {
-    let data_store_path = Path::new(path_str);
-
-    if data_store_path.exists() {
-        let mut file = File::open(data_store_path)
-            .with_context(|| format!("Failed to open hash file: {path_str}"))?;
-        let mut contents = String::new();
-        let _ = file
-            .read_to_string(&mut contents)
-            .with_context(|| format!("Failed to read hash file: {path_str}"))?;
-        let data_store = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse hash file: {path_str}"))?;
-        Ok(data_store)
-    } else {
-        info!("Data store path does not exist: {}", path_str);
-        Ok(BTreeMap::new())
-    }
-}
-
-#[instrument]
-fn save_data_store(
-    page_datas: &BTreeMap<Url, PageData>,
-    path_str: &str,
-) -> anyhow::Result<(), anyhow::Error> {
-    let data_store_path = Path::new(path_str);
-    let mut data_store_file = if data_store_path.exists() {
-        OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(data_store_path)
-            .with_context(|| format!("Failed to open file at {data_store_path:?}"))?
-    } else {
-        File::create(data_store_path)
-            .with_context(|| format!("Failed to create file at {data_store_path:?}"))?
-    };
-
-    let serialized = serde_json::to_string_pretty(&page_datas)
-        .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to serialize HashMap: {e}"),
-            )
-        })
-        .context("Failed to serialize page data")?;
-
-    data_store_file
-        .write_all(serialized.as_bytes())
-        .with_context(|| "Failed to write serialized data to file")?;
-
-    Ok(())
 }
 
 #[instrument]
@@ -393,164 +167,6 @@ fn get_unique_links(raw_pdf: &[u8]) -> HashSet<Url> {
     raw_links
 }
 
-#[instrument]
-async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebDriver> {
-    let ip = &config.gecko.ip;
-    let port = config.gecko.port;
-
-    let process = Command::new(config.gecko.binary.clone())
-        .arg("--port")
-        .arg(port.to_string())
-        .arg("--host")
-        .arg(ip)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("Failed to spawn geckodriver process")?;
-
-    info!("Gecko process started: {:?}", process.id());
-    sleep(Duration::from_secs(1)).await;
-
-    let mut caps = FirefoxCapabilities::new();
-    if config.gecko.headless {
-        caps.set_headless()?;
-    }
-
-    let driver_url = format!("http://{ip}:{port}");
-    let driver = WebDriver::new(&driver_url, caps)
-        .await
-        .context("Failed to create WebDriver instance")?;
-    driver
-        .set_window_rect(0, 0, config.gecko.width, config.gecko.height)
-        .await
-        .context("Failed to set window rectangle")?;
-    driver
-        .set_page_load_timeout(config.gecko.page_load_timeout)
-        .await
-        .context("Failed to set page load timeout")?;
-    driver
-        .set_script_timeout(config.gecko.script_timeout)
-        .await
-        .context("Failed to set script timeout")?;
-
-    if let Some(extensions) = &config.extensions {
-        let pwd = std::env::current_dir()?;
-        for extension in extensions {
-            let extensions_dir = format!(
-                "./{}/{}/{}",
-                config.dirs.base_dir, config.dirs.project_subdir, config.dirs.extensions_subdir
-            );
-
-            if let Some(username) = &config.github_username {
-                match get_extension_github(
-                    username,
-                    &extension.repo,
-                    &extension.name,
-                    &extensions_dir,
-                )
-                .await
-                {
-                    Ok(msg) => info!("{msg}"),
-                    Err(e) => error!("{e:?}"),
-                }
-            }
-
-            let extension_path = Path::new(&extensions_dir).join(&extension.name);
-            let file = fs::read_dir(&extension_path)?
-                .filter_map(|entry| entry.ok().map(|e| e.path()))
-                .find(|path| path.extension().map_or(false, |ext| ext == "xpi"))
-                .ok_or_else(|| anyhow!("No .xpi file found in {extension_path:?}"))
-                .context("Failed to find XPI file")?;
-
-            let absolute_extension_path =
-                format!("{}/{}", pwd.display(), file.strip_prefix("./")?.display());
-            info!("Installing extension: {absolute_extension_path}");
-
-            let tools = FirefoxTools::new(driver.handle.clone());
-            tools
-                .install_addon(&absolute_extension_path, Some(false))
-                .await
-                .context("Failed to install extension")?;
-        }
-    }
-
-    Ok(driver)
-}
-
-async fn stop_geckos() {
-    let _ = Command::new("killall").arg("geckodriver").spawn();
-    sleep(Duration::from_secs(1)).await;
-}
-
-async fn new_tab(driver: WebDriver, url: &str) -> anyhow::Result<WebDriver> {
-    let handle = driver.new_tab().await.context("Failed to create new tab")?;
-    driver
-        .switch_to_window(handle.clone())
-        .await
-        .context("Failed to switch to new tab")?;
-
-    match driver.goto(url).await {
-        Ok(()) => {}
-        Err(thirtyfour::error::WebDriverError::CmdError(
-            thirtyfour::fantoccini::error::CmdError::Standard(e),
-        )) => {
-            if "insecure certificate" == e.error() {
-                warn!("CmdError::Standard insecure certificate: {e}, URL: {url}");
-            } else if "timeout" == e.error() {
-                info!("CmdError::Standard Timeout: <common>");
-            } else {
-                warn!(
-                    "CmdError::Standard error: {e}, e.error(): {}, URL: {url}",
-                    e.error()
-                );
-            }
-        }
-        Err(e) => {
-            warn!("WebDriverError error: {e}, URL: {url}");
-        }
-    }
-
-    // Setting the name must come after the goto
-    driver
-        .set_window_name(url)
-        .await
-        .context("Failed to set window name")?;
-
-    info!("New tab successfully created and navigated to {}", url);
-    Ok(driver)
-}
-
-async fn safely_close_window(driver: &WebDriver, url: &Url) -> anyhow::Result<()> {
-    driver
-        .switch_to_named_window(url.as_str())
-        .await
-        .with_context(|| format!("Failed to switch to window named: {url}"))?;
-
-    driver
-        .close_window()
-        .await
-        .with_context(|| "Failed to close window")?;
-
-    // Prevents NoSuchWindow error after a window has been closed
-    let handles = driver
-        .windows()
-        .await
-        .with_context(|| "Failed to get window handles")?;
-
-    if let Some(handle) = handles.first() {
-        driver
-            .switch_to_window(handle.clone())
-            .await
-            .with_context(|| "Failed to switch to main window")?;
-    } else {
-        error!("No window handles found after closing the window");
-    }
-
-    info!("Window closed safely for URL: {}", url);
-
-    Ok(())
-}
-
 fn title_check(title: &str) -> Result<(), CustomError> {
     if title.contains("404") || title.contains("Not Found") {
         return Err(CustomError::PageNotFound);
@@ -561,68 +177,6 @@ fn title_check(title: &str) -> Result<(), CustomError> {
     if title.contains("Error") || title.contains("Unable to") || title.contains("Problem") {
         return Err(CustomError::PageError);
     }
-
-    Ok(())
-}
-
-fn save_page_data(
-    url: &Url,
-    config: &Config,
-    page_source: &str,
-    img: &image::DynamicImage,
-) -> anyhow::Result<()> {
-    let now = Utc::now();
-    let url_hash = common::hash_string(&url.to_string());
-    let save_data_path = Path::new(&config.dirs.base_dir)
-        .join(&config.dirs.project_subdir)
-        .join(&config.dirs.pages_subdir)
-        .join(url_hash.clone());
-
-    if !save_data_path.exists() {
-        fs::create_dir_all(&save_data_path)
-            .with_context(|| format!("Failed to create directory: {:?}", &save_data_path))?;
-    }
-
-    let mut remove_files = Vec::new();
-
-    if let Ok(old_files) = fs::read_dir(&save_data_path) {
-        let files: Vec<_> = old_files
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                let path = entry.path();
-                path.extension()
-                    .map_or(false, |ext| ext == "html" || ext == "png")
-            })
-            .collect();
-
-        remove_files = files
-            .into_iter()
-            .skip(config.num_of_local_pages)
-            .map(|e| e.path())
-            .collect();
-    }
-
-    for file in &remove_files {
-        if let Err(err) = fs::remove_file(file) {
-            error!("Failed to remove file: {:?}. Error: {:?}", file, err);
-        }
-    }
-
-    let page_file_name = format!("page_{now:?}.html");
-    let screenshot_file_name = format!("screenshot_{now:?}.png");
-
-    let page_file_path = save_data_path.join(page_file_name);
-    let screenshot_file_path = save_data_path.join(screenshot_file_name);
-
-    File::create(&page_file_path)
-        .with_context(|| format!("Failed to create file: {:?}", &page_file_path))?
-        .write_all(page_source.as_bytes())
-        .with_context(|| format!("Failed to write to file: {:?}", &page_file_path))?;
-
-    img.save(&screenshot_file_path)
-        .with_context(|| format!("Failed to save screenshot: {:?}", &screenshot_file_path))?;
-
-    info!("Page data saved successfully for URL: {}", url);
 
     Ok(())
 }
@@ -638,7 +192,7 @@ async fn check_link(
         LinkType::Generic => {
             if let Err(err) = driver.switch_to_named_window(url.as_str()).await {
                 warn!("Failed to switch to window: {err:?}");
-                sleep(Duration::from_secs(1000)).await;
+                sleep(Duration::from_secs(20)).await;
             }
 
             let title = driver.title().await.unwrap_or_default();
@@ -651,7 +205,7 @@ async fn check_link(
             let img = image::load_from_memory(&new_ss).unwrap_or_default();
 
             if config.keep_local_records {
-                if let Err(err) = save_page_data(url, config, &page_source, &img) {
+                if let Err(err) = disc_op::save_page_data(url, config, &page_source, &img) {
                     panic!("Failed to save page data: {err:?}"); // TODO: Replace with proper error handling
                 }
             }
@@ -760,7 +314,7 @@ async fn check_links(
                     .unwrap_or_default();
 
                 let state = check_link(&driver, &url, marker, config, linktype).await;
-                safely_close_window(&driver, &url).await?;
+                driver::safely_close_window(&driver, &url).await?;
                 results.push((url, state));
             }
         } else {
@@ -786,7 +340,7 @@ async fn check_links(
             .unwrap_or_default();
 
         let state = check_link(&driver, &url, marker, config, linktype).await;
-        safely_close_window(&driver, &url).await?;
+        driver::safely_close_window(&driver, &url).await?;
         results.push((url, state));
     }
 
@@ -796,19 +350,20 @@ async fn check_links(
 
 #[instrument(skip(config))]
 async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Result<()> {
-    stop_geckos().await;
+    driver::stop_geckos().await;
 
     let datastore_path = &format!(
         "./{}/{}/{}",
         config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
     );
-    let mut page_datas = load_data_store(datastore_path).context("Failed to load data store")?;
+    let mut page_datas =
+        disc_op::load_data_store(datastore_path).context("Failed to load data store")?;
 
-    let urls_to_check = get_urls(config.pdf_path.clone(), config.url.clone(), urls)
+    let urls_to_check = get_urls(config.pdf_path.clone(), config.pdf_url.clone(), urls)
         .await
         .context("Failed to get URLs to check")?;
 
-    let driver = match fire_up_and_setup_the_gecko(config).await {
+    let driver = match driver::fire_up_and_setup_the_gecko(config).await {
         Ok(driver) => driver,
         Err(e) => return Err(anyhow::anyhow!(e)),
     };
@@ -833,70 +388,167 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
         "./{}/{}/{}",
         config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
     );
-    save_data_store(&page_datas, datastore_path).context("Failed to save data store")?;
+    disc_op::save_data_store(&page_datas, datastore_path).context("Failed to save data store")?;
 
-    stop_geckos().await;
+    driver::stop_geckos().await;
 
     info!("Link checking completed successfully");
 
     Ok(())
 }
 
-#[derive(Parser, Debug)]
-struct Args {
-    #[arg(short, long)]
-    pdf_path: Option<String>,
-
-    #[arg(short, long)]
-    config_path: Option<String>,
-
-    #[arg(long)]
-    clean_start: bool,
-
-    #[arg(long)]
-    check_this_url: Option<Vec<String>>,
-
-    #[arg(long, default_value = "true")]
-    check_for_update: bool,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    const VERSION: &str = env!("CARGO_PKG_VERSION");
-    const NAME: &str = env!("CARGO_PKG_NAME");
-    const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
-
     let subscriber = FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_max_level(Level::INFO)
+        // .with_env_filter(EnvFilter::from_default_env())
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let start = Instant::now();
     let args = Args::parse();
-    let config = match config::config(&args) {
-        Ok(config) => config,
+
+    let ui = MainWindow::new()?;
+    let app_state = Rc::new(RefCell::new(AppState::new()));
+
+    let config = match config::load(&ui, &mut app_state.borrow_mut()) {
+        Ok(config) => Rc::new(RefCell::new(config)),
         Err(e) => return Err(anyhow::anyhow!(e.to_string())),
     };
 
-    if args.check_for_update {
-        if let Some(username) = &config.github_username {
-            match check_for_update(
-                &VERSION.to_string(),
-                username,
-                &AUTHOR.to_string(),
-                &NAME.to_string(),
-            )
-            .await
-            {
-                Ok(msg) => info!("{msg}"),
-                Err(e) => error!("{e:?}"),
+    disc_op::storage(args.clean_start, &config.borrow());
+
+    let ui_weak = ui.as_weak();
+    ui.global::<UpdateCheck>().on_self_check_update({
+        let app_state = app_state.clone();
+
+        if args.check_for_update {
+            update::helper(&ui, &mut app_state.borrow_mut());
+        } else {
+            warn!("Automatic update checking is disabled.");
+            app_state
+                .borrow_mut()
+                .add_to_self_update_log("Automatic update checking is disabled.", &ui);
+        }
+
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                update::helper(&ui, &mut app_state.borrow_mut());
             }
         }
+    });
+
+    let ui_weak = ui.as_weak();
+    ui.global::<UpdateCheck>().on_geckodriver_check_update({
+        let app_state = app_state.clone();
+
+        let rc_config = Rc::clone(&config);
+        let config_dirs = rc_config.borrow().dirs.clone();
+        let config_gecko = rc_config.borrow().gecko.clone();
+        match driver::download_gecko(&config_dirs, &config_gecko).await {
+            Ok(()) => {
+                app_state
+                    .borrow_mut()
+                    .add_to_geckodriver_update_log("Geckodriver is up to date.", &ui);
+                info!("Geckodriver is up to date.")
+            }
+            Err(e) => {
+                app_state
+                    .borrow_mut()
+                    .add_to_geckodriver_update_log("Failed to download Geckodriver.", &ui);
+                error!("{e:?}")
+            }
+        }
+
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                app_state
+                    .borrow_mut()
+                    .add_to_geckodriver_update_log("Not yet implemented, go to https://github.com/mozilla/geckodriver/releases/latest to check :)", &ui);
+            }
+        }
+    });
+
+    let ui_weak = ui.as_weak();
+    ui.global::<Settings>().on_update_config_value({
+        let rc_config = Rc::clone(&config);
+
+        move |key, value| {
+            if let Some(ui) = ui_weak.upgrade() {
+                ui.global::<Settings>().set_config_saved(false);
+                info!("value: {:?}", value);
+                match rc_config.borrow_mut().update(&key, &value) {
+                    Ok(()) => "".to_string().into(),
+                    Err(e) => {
+                        error!("{e:?}");
+                        e.to_string().to_uppercase().into()
+                    }
+                }
+            } else {
+                "Unreachable?".to_string().into()
+            }
+        }
+    });
+
+    let ui_weak = ui.as_weak();
+    ui.global::<Settings>().on_write_config({
+        let rc_config = Rc::clone(&config);
+        let app_state = app_state.clone();
+
+        move || {
+            if let Some(ui) = ui_weak.upgrade() {
+                let config = rc_config.borrow();
+
+                match config::write_config_file(
+                    &config,
+                    &"config.toml".into(),
+                    &config.dirs.base_dir,
+                ) {
+                    Ok(()) => {
+                        ui.global::<Settings>().set_config_saved(true);
+                        app_state
+                            .borrow_mut()
+                            .add_to_config_log("Config saved successfully.", &ui);
+                    }
+                    Err(e) => {
+                        error!("{e:?}");
+                        app_state
+                            .borrow_mut()
+                            .add_to_config_log("Failed to save config.", &ui);
+                    }
+                }
+
+                ui.global::<Settings>().set_config_saved(true);
+                app_state
+                    .borrow_mut()
+                    .add_to_config_log("Saved loaded successfully.", &ui);
+            }
+        }
+    });
+
+    let ui_weak = ui.as_weak();
+    ui.on_close_window({
+        let app_state = app_state.clone();
+
+        move |should_continue| {
+            app_state.borrow_mut().continue_after_close = should_continue;
+            let ui = ui_weak.upgrade().unwrap();
+            ui.hide().unwrap();
+        }
+    });
+
+    let _ = ui.run();
+
+    if app_state.borrow().continue_after_close {
+        info!("Continue after close is enabled");
+    } else {
+        info!("Continue after close is disabled");
+        return Ok(());
     }
 
-    if config.check_links {
-        storage(args.clean_start, &config);
+    let rc_config = Rc::clone(&config);
+    let config = rc_config.borrow().clone();
 
+    if config.check_links {
         match link_checker(&config, args.check_this_url).await {
             Ok(()) => {}
             Err(e) => anyhow::bail!("{e:?}"),
@@ -918,13 +570,6 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     }
-
-    let duration = start.elapsed();
-    info!(
-        "Finished in {} minutes {} seconds.",
-        duration.as_secs() / 60,
-        duration.as_secs() % 60
-    );
 
     Ok(())
 }

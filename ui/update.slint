@@ -1,0 +1,127 @@
+import { Button, VerticalBox, HorizontalBox, GridBox, ScrollView } from "std-widgets.slint";
+
+import { UpdateCheck } from "globals.slint";
+
+export component UpdateView {
+    VerticalLayout {
+        GridBox {
+            Rectangle { }
+
+            Button {
+                min-width: 150px;
+                height: 30px;
+
+                text: UpdateCheck.self_update_button_text;
+
+                enabled: {
+                    !UpdateCheck.actively_checking_for_update && UpdateCheck.self_update_button_text != "Up to date";
+                }
+                clicked => {
+                    UpdateCheck.self_check_update();
+                }
+            }
+
+            Rectangle { }
+        }
+
+        VerticalBox {
+            HorizontalBox {
+                padding: 0px;
+
+                Text {
+                    height: 20px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+
+                    text: "Link Rustler Log";
+                }
+            }
+
+            Rectangle {
+                border-color: #808080;
+                border-width: 2px;
+                background: #3b3b3b;
+                max-height: 300px;
+                min-height: 200px;
+
+                ScrollView {
+                    Rectangle {
+                        min-width: parent.width - 15px;
+                        height: parent.height - 10px;
+
+                        ScrollView {
+                            Text {
+                                x: 8px;
+                                y: 8px;
+                                horizontal-alignment: left;
+                                vertical-alignment: top;
+
+                                text: UpdateCheck.self_update_log;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        GridBox {
+            Rectangle { }
+
+            Button {
+                min-width: 150px;
+                height: 30px;
+
+                text: UpdateCheck.geckodriver_update_button_text;
+
+                enabled: {
+                    !UpdateCheck.actively_checking_for_update && UpdateCheck.geckodriver_update_button_text != "Up to date";
+                }
+                clicked => {
+                    UpdateCheck.geckodriver_check_update();
+                }
+            }
+
+            Rectangle { }
+        }
+
+        VerticalBox {
+            HorizontalBox {
+                padding: 0px;
+
+                Text {
+                    height: 20px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+
+                    text: "Geckodriver Log";
+                }
+            }
+
+            Rectangle {
+                border-color: #808080;
+                border-width: 2px;
+                background: #3b3b3b;
+                max-height: 300px;
+                min-height: 200px;
+
+                ScrollView {
+                    Rectangle {
+                        min-width: parent.width - 15px;
+                        height: parent.height - 10px;
+
+                        ScrollView {
+                            Text {
+                                x: 8px;
+                                y: 8px;
+                                horizontal-alignment: left;
+                                vertical-alignment: top;
+
+                                text: UpdateCheck.geckodriver_update_log;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,78 @@
+import { TabWidget, Button, HorizontalBox } from "std-widgets.slint";
+
+import { SettingsView } from "settings.slint";
+import { UpdateView } from "update.slint";
+
+import { Globals, Settings, ConfigProperty, UpdateCheck } from "globals.slint";
+
+export { Globals, SettingsView, UpdateView, UpdateCheck, Settings, ConfigProperty }
+
+export component MainWindow inherits Window {
+    title: "Link Rustler Manager";
+    min-width: 500px;
+
+    in property <bool> config_ready: false;
+
+    in property <bool> app_ready: {
+        root.config_ready;
+    }
+    callback close_window(bool);
+
+    VerticalLayout {
+        Rectangle {
+            background: root.app_ready ? green : red;
+            height: 30px;
+            width: 100%;
+            Text {
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                text: "App Status: " + (root.app_ready ? "Ready" : "Not Ready");
+            }
+        }
+
+        HorizontalBox {
+            min-width: parent.width - 10px;
+            padding: 10px;
+
+            Button {
+                min-width: parent.width * 0.5 - 20px;
+
+                text: "Close Manager and Check Links";
+
+                clicked => {
+                    root.close_window(true);
+                }
+            }
+
+            Button {
+                min-width: parent.width * 0.5 - 20px;
+
+                text: "Close Manager";
+
+                clicked => {
+                    root.close_window(false);
+                }
+            }
+        }
+
+        TabWidget {
+            Tab {
+                title: "Settings";
+
+                SettingsView {
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+
+            Tab {
+                title: "Update";
+
+                UpdateView {
+                    width: 100%;
+                    height: 100%;
+                }
+            }
+        }
+    }
+}
