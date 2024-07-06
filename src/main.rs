@@ -30,8 +30,8 @@ use reqwest::{Client, Url};
 use slint::ComponentHandle;
 use thirtyfour::WebDriver;
 use tokio::time::{sleep, Instant};
-use tracing::{error, info, instrument, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info, instrument, warn};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 slint::include_modules!();
 
@@ -192,7 +192,6 @@ async fn check_link(
         LinkType::Generic => {
             if let Err(err) = driver.switch_to_named_window(url.as_str()).await {
                 warn!("Failed to switch to window: {err:?}");
-                sleep(Duration::from_secs(20)).await;
             }
 
             let title = driver.title().await.unwrap_or_default();
@@ -400,8 +399,8 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        // .with_env_filter(EnvFilter::from_default_env())
+        // .with_max_level(Level::INFO)
+        .with_env_filter(EnvFilter::from_default_env())
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
