@@ -12,7 +12,7 @@ use crate::{ConfigProperty, Settings};
 pub fn load(ui: &MainWindow, app_state: &mut AppState) -> anyhow::Result<Config> {
     app_state.add_to_config_log("Checking configuration.", ui);
 
-    let default_config_path = PathBuf::from("./data/config.toml");
+    let default_config_path = PathBuf::from("data/config.toml");
     let default_config = Config::default();
 
     let config_path = if default_config_path.exists() {
@@ -33,7 +33,7 @@ pub fn load(ui: &MainWindow, app_state: &mut AppState) -> anyhow::Result<Config>
     };
 
     if config.is_none() {
-        let default_base_path = PathBuf::from("./data");
+        let default_base_path = PathBuf::from("data");
         if !default_base_path.exists() {
             fs::create_dir(&default_base_path).with_context(|| {
                 format!("Failed to create data directory {default_base_path:?}")
