@@ -161,7 +161,7 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
         let pwd = std::env::current_dir()?;
         for extension in extensions {
             let extensions_dir = format!(
-                "./{}/{}/{}",
+                "{}/{}/{}",
                 config.dirs.base_dir, config.dirs.project_subdir, config.dirs.extensions_subdir
             );
 

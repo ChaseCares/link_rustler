@@ -15,10 +15,7 @@ use crate::{
 
 #[instrument]
 pub fn storage(clean_start: bool, config: &Config) {
-    let project_dir = &format!(
-        "./{}/{}",
-        &config.dirs.base_dir, &config.dirs.project_subdir
-    );
+    let project_dir = &format!("{}/{}", &config.dirs.base_dir, &config.dirs.project_subdir);
 
     if clean_start {
         if let Err(err) = fs::remove_dir_all(project_dir) {

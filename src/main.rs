@@ -352,7 +352,7 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
     driver::stop_geckos().await;
 
     let datastore_path = &format!(
-        "./{}/{}/{}",
+        "{}/{}/{}",
         config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
     );
     let mut page_datas =
@@ -384,7 +384,7 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
     }
 
     let datastore_path = &format!(
-        "./{}/{}/{}",
+        "{}/{}/{}",
         config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
     );
     disc_op::save_data_store(&page_datas, datastore_path).context("Failed to save data store")?;

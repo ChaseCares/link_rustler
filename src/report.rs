@@ -49,7 +49,7 @@ td:nth-child(9) {
 
 fn get_data_store(config: &crate::structs::Config) -> BTreeMap<url::Url, PageData> {
     let data_store_path = &format!(
-        "./{}/{}/{}",
+        "{}/{}/{}",
         config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
     );
 
