@@ -12,14 +12,14 @@
     // trivial_numeric_casts,
 )]
 
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use std::time::Duration;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
+    fs::File,
+    io::Read,
+    path::Path,
     rc::Rc,
+    time::Duration,
 };
 
 use anyhow::Context;
