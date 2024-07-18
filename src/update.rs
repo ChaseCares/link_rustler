@@ -33,6 +33,7 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
         .bin_path_in_archive("{{ bin }}-{{ version }}-{{ target }}/{{ bin }}")
         .show_download_progress(true)
         .current_version(current_version)
+        .no_confirm(true)
         .build()
     {
         Ok(status) => status,
