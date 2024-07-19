@@ -1,8 +1,10 @@
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::Duration,
+};
 
 use anyhow::{anyhow, Context};
 use flate2::read::GzDecoder;

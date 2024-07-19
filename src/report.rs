@@ -1,10 +1,13 @@
 // Over your eyes! Don't look in here! :)
 
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write;
-use std::hash::Hash;
-use std::vec;
-use std::{fs::OpenOptions, path::Path};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Write,
+    fs::OpenOptions,
+    hash::Hash,
+    path::Path,
+    vec,
+};
 
 use html_builder::{Buffer, Html5, Node};
 

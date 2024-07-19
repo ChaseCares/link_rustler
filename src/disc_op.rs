@@ -1,7 +1,9 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::Read;
-use std::path::Path;
-use std::{collections::BTreeMap, io::Write};
+use std::{
+    collections::BTreeMap,
+    fs::{self, File, OpenOptions},
+    io::{Read, Write},
+    path::PathBuf,
+};
 
 use anyhow::Context;
 use chrono::Utc;
