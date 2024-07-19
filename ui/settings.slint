@@ -2,7 +2,7 @@ import { Button, VerticalBox, HorizontalBox, LineEdit, GridBox, ScrollView, Chec
 
 import { Globals, Settings } from "globals.slint";
 
-export component SettingsView {
+export component SettingsView inherits Window {
 
     property <bool> show_advanced: false;
     property <string> error;
