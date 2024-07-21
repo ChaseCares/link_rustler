@@ -17,7 +17,12 @@ use tokio::time::sleep;
 use tracing::{error, info, instrument, warn};
 use url::Url;
 
-use crate::structs::{self, Config};
+use crate::{
+    common::get_os_arch_for_geckodriver,
+    get_loc,
+    structs::{self, Config},
+    Locations,
+};
 
 #[instrument]
 async fn github_api_request(
@@ -53,9 +58,9 @@ async fn get_extension_github(
     github_username: &String,
     repo_owner: &String,
     extension_name: &String,
-    extensions_dir: &String,
+    extensions_dir: &PathBuf,
 ) -> anyhow::Result<String> {
-    let output_dir = Path::new(extensions_dir).join(extension_name);
+    let output_dir = extensions_dir.join(extension_name);
     if output_dir.exists() && output_dir.metadata()?.created()?.elapsed()?.as_secs() < 86400 {
         return Ok("Extension was checked within the last 24 hours".to_string());
     }
@@ -124,7 +129,8 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
     let ip = &config.gecko.ip;
     let port = &config.gecko.port;
 
-    let process = Command::new(config.gecko.binary.clone())
+    let gecko_binary = get_loc(Locations::GeckodriverBinary);
+    let process = Command::new(gecko_binary)
         .arg("--port")
         .arg(port.to_string())
         .arg("--host")
@@ -160,12 +166,8 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
         .context("Failed to set script timeout")?;
 
     if let Some(extensions) = &config.extensions {
-        let pwd = std::env::current_dir()?;
         for extension in extensions {
-            let extensions_dir = format!(
-                "{}/{}/{}",
-                config.dirs.base_dir, config.dirs.project_subdir, config.dirs.extensions_subdir
-            );
+            let extensions_dir = get_loc(Locations::ExtensionsDir);
 
             if let Some(username) = &config.github_username {
                 match get_extension_github(
@@ -180,17 +182,16 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
                     Err(e) => error!("{e:?}"),
                 }
             }
-
-            let extension_path = Path::new(&extensions_dir).join(&extension.name);
+            let extension_path = get_loc(Locations::ExtensionsDir).join(&extension.name);
             let file = fs::read_dir(&extension_path)?
                 .filter_map(|entry| entry.ok().map(|e| e.path()))
                 .find(|path| path.extension().map_or(false, |ext| ext == "xpi"))
                 .ok_or_else(|| anyhow!("No .xpi file found in {extension_path:?}"))
                 .context("Failed to find XPI file")?;
 
-            let absolute_extension_path =
-                format!("{}/{}", pwd.display(), file.strip_prefix("./")?.display());
-            info!("Installing extension: {absolute_extension_path}");
+            let absolute_extension_path = file.into_os_string().into_string().unwrap();
+            // let absolute_extension_path = format!("{:?}", file);
+            println!("Installing extension: {:?}", &absolute_extension_path);
 
             let tools = FirefoxTools::new(driver.handle.clone());
             tools
@@ -204,57 +205,62 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
 }
 
 #[instrument]
-pub async fn download_gecko(
-    config_dirs: &structs::Storage,
-    config_gecko: &structs::GeckoConfig,
-) -> anyhow::Result<()> {
-    let gecko_tar_gz_path = format!(
-        "{}/geckodriver.{}.tar.gz",
-        config_dirs.base_dir, config_gecko.version
-    );
+pub async fn download_gecko(config_gecko: &structs::GeckoConfig) -> anyhow::Result<()> {
+    let base_data = get_loc(Locations::BaseData);
+    let gecko_tar_gz_path = base_data.join(format!("geckodriver.{}.tar.gz", config_gecko.version));
 
-    if !Path::new(&gecko_tar_gz_path).exists() && config_gecko.location == "default" {
-        download_and_extract_gecko(&gecko_tar_gz_path, config_dirs, config_gecko).await?;
-        verify_geckodriver_version(config_dirs, config_gecko)?;
-    } else if config_gecko.location == "custom" && !Path::new(&config_gecko.binary).exists() {
-        error!(
-            "Custom geckodriver binary not found: {:?}",
-            config_gecko.binary
-        );
+    if !Path::new(&gecko_tar_gz_path).exists() {
+        download_and_extract_gecko(&gecko_tar_gz_path, config_gecko).await?;
+        verify_geckodriver_version(config_gecko)?;
+    } else {
+        info!("Geckodriver already downloaded");
     }
 
     Ok(())
 }
 
 pub async fn download_and_extract_gecko(
-    gecko_tar_gz_path: &str,
-    config_dirs: &structs::Storage,
+    gecko_tar_gz_path: &PathBuf,
     config_gecko: &structs::GeckoConfig,
 ) -> anyhow::Result<()> {
+    let arch_os = get_os_arch_for_geckodriver();
+    info!("Downloading geckodriver for {arch_os}");
+
     let gecko_binary_url = format!(
-        "https://github.com/mozilla/geckodriver/releases/download/v{}/geckodriver-v{}-{}.tar.gz",
-        config_gecko.version, config_gecko.version, config_gecko.arch
+        "https://github.com/mozilla/geckodriver/releases/download/v{}/geckodriver-v{}-{arch_os}.tar.gz",
+        config_gecko.version, config_gecko.version
     );
 
     let client = Client::new();
     let binary_res = client.get(&gecko_binary_url).send().await?;
 
-    let mut file = File::create(gecko_tar_gz_path).context("Failed to create geckodriver file")?;
-    file.write_all(&binary_res.bytes().await?)?;
+    match binary_res.status() {
+        reqwest::StatusCode::OK => {
+            info!("Geckodriver downloaded successfully");
+            let mut file =
+                File::create(gecko_tar_gz_path).context("Failed to create geckodriver file")?;
+            file.write_all(&binary_res.bytes().await?)?;
 
-    let tar_gz = File::open(gecko_tar_gz_path).context("Failed to open geckodriver file")?;
-    let tar = GzDecoder::new(tar_gz);
-    let mut archive = Archive::new(tar);
-    archive.unpack(config_dirs.base_dir.clone())?;
+            let tar_gz =
+                File::open(gecko_tar_gz_path).context("Failed to open geckodriver file")?;
+            let tar = GzDecoder::new(tar_gz);
+            let mut archive = Archive::new(tar);
+            archive.unpack(get_loc(Locations::BaseData))?;
 
-    Ok(())
+            Ok(())
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            Err(anyhow!("Failed to download geckodriver, check the version",))
+        }
+        _ => Err(anyhow!(
+            "Failed to download geckodriver, status code: {:?}",
+            binary_res.status()
+        )),
+    }
 }
 
-pub fn verify_geckodriver_version(
-    config_dirs: &structs::Storage,
-    config_gecko: &structs::GeckoConfig,
-) -> anyhow::Result<()> {
-    let out = Command::new(format!("{}/{}", config_dirs.base_dir, config_gecko.binary))
+pub fn verify_geckodriver_version(config_gecko: &structs::GeckoConfig) -> anyhow::Result<()> {
+    let out = Command::new(get_loc(Locations::BaseData).join("geckodriver"))
         .arg("--version")
         .stdout(Stdio::piped())
         .spawn()
@@ -279,14 +285,21 @@ pub async fn stop_geckos() {
 }
 
 pub async fn new_tab(driver: WebDriver, url: &str) -> anyhow::Result<WebDriver> {
+    info!("Creating new tab and navigating to {}", url);
     let handle = driver.new_tab().await.context("Failed to create new tab")?;
+
+    info!("Switching to new tab");
     driver
         .switch_to_window(handle.clone())
         .await
         .context("Failed to switch to new tab")?;
 
+    info!("Navigating to URL: {}", url);
+
     match driver.goto(url).await {
-        Ok(()) => {}
+        Ok(()) => {
+            info!("Successfully navigated to {}", url);
+        }
         Err(thirtyfour::error::WebDriverError::CmdError(
             thirtyfour::fantoccini::error::CmdError::Standard(e),
         )) => {
@@ -306,10 +319,15 @@ pub async fn new_tab(driver: WebDriver, url: &str) -> anyhow::Result<WebDriver> 
         }
     }
 
+    info!("Waiting for page to load");
     // pfizeroncologytogether changes the name of the window after the page has loaded
     if url.contains("pfizeroncologytogether") {
+        info!("Sleeping for 5 seconds to allow problematic pages to load");
         sleep(Duration::from_secs(5)).await;
     }
+
+    // If you try to set the name too quickly it doesn't stick *shrug*
+    sleep(Duration::from_secs(1)).await;
 
     // Setting the name must come after the goto
     driver
@@ -322,27 +340,50 @@ pub async fn new_tab(driver: WebDriver, url: &str) -> anyhow::Result<WebDriver> 
 }
 
 pub async fn safely_close_window(driver: &WebDriver, url: &Url) -> anyhow::Result<()> {
-    driver
-        .switch_to_named_window(url.as_str())
-        .await
-        .with_context(|| format!("Failed to switch to window named: {url}"))?;
+    match driver.switch_to_named_window(url.as_str()).await {
+        Ok(_) => {
+            info!("Switched to window with URL: {}", url);
+        }
+        Err(_) => {
+            warn!("Failed to switch to window with URL: {}", url);
+
+            let windows = driver
+                .windows()
+                .await
+                .context("Failed to get window handles")?;
+            for handle in windows {
+                driver
+                    .switch_to_window(handle.clone())
+                    .await
+                    .context("Failed to switch to window")?;
+                let current_url = driver
+                    .current_url()
+                    .await
+                    .context("Failed to get current URL")?;
+                if current_url == *url {
+                    info!("Found window with URL: {}", url);
+                    break;
+                }
+            }
+        }
+    }
 
     driver
         .close_window()
         .await
-        .with_context(|| "Failed to close window")?;
+        .context("Failed to close window")?;
 
     // Prevents NoSuchWindow error after a window has been closed
     let handles = driver
         .windows()
         .await
-        .with_context(|| "Failed to get window handles")?;
+        .context("Failed to get window handles")?;
 
     if let Some(handle) = handles.first() {
         driver
             .switch_to_window(handle.clone())
             .await
-            .with_context(|| "Failed to switch to main window")?;
+            .context("Failed to switch to main window")?;
     } else {
         error!("No window handles found after closing the window");
     }

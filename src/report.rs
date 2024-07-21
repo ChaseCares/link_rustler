@@ -11,9 +11,9 @@ use std::{
 
 use html_builder::{Buffer, Html5, Node};
 
-use crate::common::hash_string;
 use crate::enums::{InvalidReason, ValidReason};
 use crate::structs::{DiffReport, Mode, PageData, ReportTableDataRow, State, Tables};
+use crate::{common::hash_string, get_loc};
 
 const NUM_VALID: usize = 8;
 const NUM_INVALID: usize = 5;
@@ -50,15 +50,10 @@ td:nth-child(9) {
 }
 ";
 
-fn get_data_store(config: &crate::structs::Config) -> BTreeMap<url::Url, PageData> {
-    let data_store_path = &format!(
-        "{}/{}/{}",
-        config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
-    );
-
+fn get_data_store() -> BTreeMap<url::Url, PageData> {
     let data_store_file = OpenOptions::new()
         .read(true)
-        .open(Path::new(data_store_path))
+        .open(get_loc(crate::Locations::DataStore))
         .expect("Could not open data store");
 
     let page_datas: BTreeMap<url::Url, PageData> =
@@ -201,21 +196,18 @@ fn mk_table(
     Ok(())
 }
 
-fn save_report(config: &crate::structs::Config, root_buf: Buffer) {
-    let report_file_path = &format!(
-        "./{}/{}/{}",
-        config.dirs.base_dir, config.dirs.project_subdir, config.dirs.report,
-    );
+fn save_report(root_buf: Buffer) {
+    let report_file_path = get_loc(crate::Locations::Report);
 
-    if Path::new(report_file_path).exists() {
-        std::fs::remove_file(report_file_path).unwrap();
+    if Path::new(&report_file_path).exists() {
+        std::fs::remove_file(&report_file_path).unwrap();
     }
 
     let mut report_file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(Path::new(report_file_path))
+        .open(Path::new(&report_file_path))
         .expect("Could not open report file");
 
     let page = root_buf.finish();
@@ -225,7 +217,7 @@ fn save_report(config: &crate::structs::Config, root_buf: Buffer) {
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn gen_post_run_report(config: &crate::Config) {
-    let page_datas = get_data_store(config);
+    let page_datas = get_data_store();
 
     let mut root_buf = Buffer::new();
     root_buf.doctype();
@@ -360,8 +352,14 @@ pub(crate) fn gen_post_run_report(config: &crate::Config) {
         ("Hash Only", tables.hash_only),
         ("Valid", tables.valid),
     ] {
-        mk_table(&mut body, title, table, Some(&config.dirs.pages_subdir)).unwrap();
+        mk_table(
+            &mut body,
+            title,
+            table,
+            Some(&format!("{:?}", get_loc(crate::Locations::PagesSubdir))),
+        )
+        .unwrap();
     }
 
-    save_report(config, root_buf);
+    save_report(root_buf);
 }

@@ -9,48 +9,53 @@ export { Globals, SettingsView, UpdateView, UpdateCheck, Settings, ConfigPropert
 
 export component MainWindow inherits Window {
     title: "Link Rustler Manager";
-    min-width: 500px;
+    min-width: 600px;
 
-    in property <bool> config_ready: false;
+    property <length> close_button_Width: 55px;
 
-    in property <bool> app_ready: {
-        root.config_ready;
-    }
-    callback close_window(bool);
+    in property <bool> link_checker_running: false;
+
+    callback close_window();
+    callback run_link_checker();
+    callback gen_report();
+    callback cause_error();
 
     VerticalLayout {
-        Rectangle {
-            background: root.app_ready ? green : red;
-            height: 30px;
-            width: 100%;
-            Text {
-                vertical-alignment: center;
-                horizontal-alignment: center;
-                text: "App Status: " + (root.app_ready ? "Ready" : "Not Ready");
-            }
-        }
-
         HorizontalBox {
             min-width: parent.width - 10px;
-            padding: 10px;
+            padding: 5px;
 
             Button {
-                min-width: parent.width * 0.5 - 20px;
+                width: root.close_button_Width;
 
-                text: "Close Manager and Check Links";
+                checked: false;
+                text: "Close";
 
                 clicked => {
-                    root.close_window(true);
+                    root.close_window();
                 }
             }
 
             Button {
-                min-width: parent.width * 0.5 - 20px;
+                min-width: parent.width * 0.5 - root.close_button_Width - 10px;
+                text: root.link_checker_running ? "Running..." : "Run link checker";
 
-                text: "Close Manager";
+                enabled: {
+                    !root.link_checker_running && Globals.link_check_can_run
+                };
 
                 clicked => {
-                    root.close_window(false);
+                    root.run_link_checker();
+                }
+            }
+
+            Button {
+                min-width: parent.width * 0.5 - root.close_button_Width - 10px;
+
+                text: "Generate report";
+
+                clicked => {
+                    root.gen_report();
                 }
             }
         }

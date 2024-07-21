@@ -54,3 +54,15 @@ pub enum CustomError {
     Warning,
     WebDriverError,
 }
+
+pub enum Arch {
+    X86,
+    X64,
+    Arm64,
+}
+
+pub enum OS {
+    Windows,
+    Linux,
+    Mac,
+}

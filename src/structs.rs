@@ -1,8 +1,7 @@
 use std::{io::Write, time::Duration};
 
 use clap::Parser;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
+use flate2::{write::ZlibEncoder, Compression};
 use image_hasher::ImageHash;
 use serde::{Deserialize, Serialize};
 use slint::ComponentHandle;
@@ -36,7 +35,6 @@ pub struct AppState {
     pub geckodriver_update_log: String,
     pub config_log: String,
     pub self_update: bool,
-    pub continue_after_close: bool,
 }
 
 impl AppState {
@@ -46,7 +44,6 @@ impl AppState {
             geckodriver_update_log: String::new(),
             config_log: String::new(),
             self_update: true,
-            continue_after_close: false,
         }
     }
 
@@ -101,17 +98,6 @@ pub struct Tables {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct Storage {
-    pub base_dir: String,
-    pub project_subdir: String,
-    pub pages_subdir: String,
-    pub temp_subdir: String,
-    pub extensions_subdir: String,
-    pub data_store: String,
-    pub report: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Extensions {
     pub repo: String,
     pub name: String,
@@ -129,9 +115,6 @@ impl Default for Extensions {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct GeckoConfig {
     pub version: String,
-    pub arch: String,
-    pub location: String,
-    pub binary: String,
     pub headless: bool,
     pub width: u32,
     pub height: u32,
@@ -147,9 +130,6 @@ impl Default for GeckoConfig {
     fn default() -> Self {
         GeckoConfig {
             version: "0.34.0".to_string(),
-            arch: "macos-aarch64".to_string(),
-            location: "default".to_string(), // "default" or "custom"
-            binary: "geckodriver".to_string(),
             headless: true,
             width: 1080,
             height: 2000,
@@ -161,14 +141,12 @@ impl Default for GeckoConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub github_username: Option<String>,
     pub pdf_url: Option<Url>,
     pub num_of_local_pages: usize,
     pub keep_local_records: bool,
-    pub check_links: bool,
-    pub gen_report: bool,
     pub screenshot_diff_confidence: usize,
     pub screenshot_diff_tolerance: u32,
     pub compression_length_tolerance: usize,
@@ -177,7 +155,6 @@ pub struct Config {
     pub pdf_path: Option<String>,
     pub gecko: GeckoConfig,
     pub extensions: Option<Vec<Extensions>>,
-    pub dirs: Storage,
 }
 
 impl Default for Config {
@@ -189,18 +166,7 @@ impl Default for Config {
             screenshot_diff_confidence: 60,
             screenshot_diff_tolerance: 3,
             compression_length_tolerance: 300,
-            dirs: Storage {
-                base_dir: "data".to_string(),
-                project_subdir: "default".to_string(),
-                pages_subdir: "pages".to_string(),
-                temp_subdir: "temp".to_string(),
-                extensions_subdir: "extensions".to_string(),
-                data_store: "data_store.json".to_string(),
-                report: "report.html".to_string(),
-            },
             keep_local_records: true,
-            check_links: true,
-            gen_report: true,
             page_dwell_time: Duration::from_secs(45),
             num_of_local_pages: 2,
             gecko: GeckoConfig::default(),
@@ -216,35 +182,21 @@ impl Config {
             "pdf_url" => self.pdf_url = Some(Url::parse(value)?),
             "num_of_local_pages" => self.num_of_local_pages = value.parse()?,
             "keep_local_records" => self.keep_local_records = value.parse()?,
-            "check_links" => self.check_links = value.parse()?,
-            "gen_report" => self.gen_report = value.parse()?,
             "screenshot_diff_confidence" => self.screenshot_diff_confidence = value.parse()?,
             "screenshot_diff_tolerance" => self.screenshot_diff_tolerance = value.parse()?,
             "compression_length_tolerance" => self.compression_length_tolerance = value.parse()?,
             "page_dwell_time" => self.page_dwell_time = Duration::from_secs(value.parse()?),
             "pdf_path" => self.pdf_path = Some(value.to_string()),
             "gecko_version" => self.gecko.version = value.to_string(),
-            "gecko_arch" => self.gecko.arch = value.to_string(),
-            "gecko_location" => self.gecko.location = value.to_string(),
-            "gecko_binary" => self.gecko.binary = value.to_string(),
             "gecko_headless" => self.gecko.headless = value.parse()?,
             "gecko_width" => self.gecko.width = value.parse()?,
             "gecko_height" => self.gecko.height = value.parse()?,
-            "gecko_ip" => self.gecko.ip = value.to_string(),
-            "gecko_port" => self.gecko.port = value.parse()?,
             "gecko_page_load_timeout" => {
                 self.gecko.page_load_timeout = Duration::from_secs(value.parse()?)
             }
             "gecko_script_timeout" => {
                 self.gecko.script_timeout = Duration::from_secs(value.parse()?)
             }
-            "base_dir" => self.dirs.base_dir = value.to_string(),
-            "project_subdir" => self.dirs.project_subdir = value.to_string(),
-            "pages_subdir" => self.dirs.pages_subdir = value.to_string(),
-            "temp_subdir" => self.dirs.temp_subdir = value.to_string(),
-            "extensions_subdir" => self.dirs.extensions_subdir = value.to_string(),
-            "data_store" => self.dirs.data_store = value.to_string(),
-            "report" => self.dirs.report = value.to_string(),
             _ => (),
         }
 

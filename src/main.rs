@@ -17,21 +17,22 @@ use std::{
     collections::{BTreeMap, HashSet},
     fs::File,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
+    sync::OnceLock,
     time::Duration,
 };
 
 use anyhow::Context;
 use clap::Parser;
+use directories::ProjectDirs;
 use driver::new_tab;
 use reqwest::{Client, Url};
-
 use slint::ComponentHandle;
 use thirtyfour::WebDriver;
 use tokio::time::{sleep, Instant};
 use tracing::{error, info, instrument, warn};
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing_subscriber::FmtSubscriber;
 
 slint::include_modules!();
 
@@ -78,12 +79,11 @@ fn pdf_contents(pdf_path: &str) -> anyhow::Result<Vec<u8>> {
     let path = Path::new(pdf_path);
     let mut buf = Vec::new();
 
-    let mut file =
-        File::open(path).with_context(|| format!("Failed to open PDF file: {pdf_path}"))?;
+    let mut file = File::open(path).context(format!("Failed to open PDF file: {pdf_path}"))?;
 
     let _ = file
         .read_to_end(&mut buf)
-        .with_context(|| format!("Failed to read PDF file: {pdf_path}"))?;
+        .context(format!("Failed to read PDF file: {pdf_path}"))?;
 
     info!("PDF contents read successfully from: {}", pdf_path);
     Ok(buf)
@@ -351,12 +351,9 @@ async fn check_links(
 async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Result<()> {
     driver::stop_geckos().await;
 
-    let datastore_path = &format!(
-        "{}/{}/{}",
-        config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
-    );
+    let datastore_path = get_loc(Locations::DataStore);
     let mut page_datas =
-        disc_op::load_data_store(datastore_path).context("Failed to load data store")?;
+        disc_op::load_data_store(&datastore_path).context("Failed to load data store")?;
 
     let urls_to_check = get_urls(config.pdf_path.clone(), config.pdf_url.clone(), urls)
         .await
@@ -383,11 +380,8 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
         }
     }
 
-    let datastore_path = &format!(
-        "{}/{}/{}",
-        config.dirs.base_dir, config.dirs.project_subdir, config.dirs.data_store
-    );
-    disc_op::save_data_store(&page_datas, datastore_path).context("Failed to save data store")?;
+    let datastore_path = get_loc(Locations::DataStore);
+    disc_op::save_data_store(&page_datas, &datastore_path).context("Failed to save data store")?;
 
     driver::stop_geckos().await;
 
@@ -396,11 +390,48 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
     Ok(())
 }
 
+static PROJECT_NS: OnceLock<Option<ProjectDirs>> = OnceLock::new();
+
+enum Locations {
+    BaseConfig,
+    BaseData,
+    Config,
+    Report,
+    DataStore,
+    ExtensionsDir,
+    PagesSubdir,
+    GeckodriverBinary,
+}
+
+fn get_loc(loc: Locations) -> PathBuf {
+    if let Some(dirs) =
+        PROJECT_NS.get_or_init(|| ProjectDirs::from("dev", "chasecares", "link_rustler"))
+    {
+        match loc {
+            Locations::BaseConfig => dirs.config_dir().to_path_buf(),
+            Locations::BaseData => dirs.data_dir().to_path_buf(),
+            Locations::Config => dirs.config_dir().join("config.toml"),
+            Locations::Report => dirs.data_dir().join("report.html"),
+            Locations::DataStore => dirs.data_dir().join("data_store.json"),
+            Locations::ExtensionsDir => dirs.data_dir().join("extensions"),
+            Locations::PagesSubdir => dirs.data_dir().join("pages"),
+            Locations::GeckodriverBinary => dirs.data_dir().join("geckodriver"),
+        }
+    } else {
+        panic!("Failed to get project directories");
+    }
+}
+
+static ARCHITECTURE: OnceLock<&str> = OnceLock::new();
+static OPERATING_SYSTEM: OnceLock<&str> = OnceLock::new();
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let subscriber = FmtSubscriber::builder()
-        // .with_max_level(Level::INFO)
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_max_level(tracing::Level::INFO)
+        .with_file(true)
+        .with_line_number(true)
+        // .with_env_filter(EnvFilter::from_default_env())
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
@@ -414,7 +445,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(e) => return Err(anyhow::anyhow!(e.to_string())),
     };
 
-    disc_op::storage(args.clean_start, &config.borrow());
+    disc_op::init_storage(args.clean_start);
 
     let ui_weak = ui.as_weak();
     ui.global::<UpdateCheck>().on_self_check_update({
@@ -441,19 +472,20 @@ async fn main() -> Result<(), anyhow::Error> {
         let app_state = app_state.clone();
 
         let rc_config = Rc::clone(&config);
-        let config_dirs = rc_config.borrow().dirs.clone();
         let config_gecko = rc_config.borrow().gecko.clone();
-        match driver::download_gecko(&config_dirs, &config_gecko).await {
+        match driver::download_gecko( &config_gecko).await {
             Ok(()) => {
                 app_state
                     .borrow_mut()
                     .add_to_geckodriver_update_log("Geckodriver is up to date.", &ui);
+                ui.global::<Globals>().set_link_check_can_run(true);
                 info!("Geckodriver is up to date.")
             }
             Err(e) => {
                 app_state
                     .borrow_mut()
-                    .add_to_geckodriver_update_log("Failed to download Geckodriver.", &ui);
+                    .add_to_geckodriver_update_log(&e.to_string(),  &ui);
+                ui.global::<Globals>().set_link_check_can_run(false);
                 error!("{e:?}")
             }
         }
@@ -497,11 +529,7 @@ async fn main() -> Result<(), anyhow::Error> {
             if let Some(ui) = ui_weak.upgrade() {
                 let config = rc_config.borrow();
 
-                match config::write_config_file(
-                    &config,
-                    &"config.toml".into(),
-                    &config.dirs.base_dir,
-                ) {
+                match config::write_config_file(&config, &get_loc(Locations::Config)) {
                     Ok(()) => {
                         ui.global::<Settings>().set_config_saved(true);
                         app_state
@@ -526,49 +554,66 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let ui_weak = ui.as_weak();
     ui.on_close_window({
-        let app_state = app_state.clone();
-
-        move |should_continue| {
-            app_state.borrow_mut().continue_after_close = should_continue;
+        move || {
             let ui = ui_weak.upgrade().unwrap();
             ui.hide().unwrap();
         }
     });
 
-    let _ = ui.run();
+    let ui_weak = ui.as_weak();
+    ui.on_run_link_checker({
+        move || {
+            info!("Running link checker");
+            let ui = ui_weak.upgrade().unwrap();
+            let now = Instant::now();
+            slint::spawn_local(async move {
+                ui.set_link_checker_running(true);
+                sleep(Duration::from_secs(10)).await;
+                let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
+                let result = tokio_runtime
+                    .spawn(async move {
+                        // TODO: Use config without having to reload it
+                        let config = config::no_ui_load().unwrap();
 
-    if app_state.borrow().continue_after_close {
-        info!("Continue after close is enabled");
-    } else {
-        info!("Continue after close is disabled");
-        return Ok(());
-    }
+                        match link_checker(&config, None).await {
+                            Ok(()) => {
+                                info!("Link checking completed successfully");
+                            }
+                            Err(e) => {
+                                anyhow::bail!("{e:?}")
+                            }
+                        }
 
-    let rc_config = Rc::clone(&config);
-    let config = rc_config.borrow().clone();
+                        Ok(())
+                    })
+                    .await
+                    .unwrap();
+                result.unwrap();
 
-    if config.check_links {
-        match link_checker(&config, args.check_this_url).await {
-            Ok(()) => {}
-            Err(e) => anyhow::bail!("{e:?}"),
+                std::mem::forget(tokio_runtime);
+                info!("Link checking completed in: {:?}", now.elapsed());
+                ui.set_link_checker_running(false);
+            })
+            .unwrap();
         }
-    }
+    });
 
-    if config.gen_report {
-        report::gen_post_run_report(&config);
-        let report_path = format!(
-            "{}/{}/{}",
-            config.dirs.base_dir, config.dirs.project_subdir, config.dirs.report
-        );
-        match open::that(&report_path) {
-            Ok(()) => {
-                info!("Report opened successfully");
-            }
-            Err(e) => {
-                info!("Failed to auto open report, error: {e:?}. Report path: {report_path:?}");
+    ui.on_gen_report({
+        let rc_config = Rc::clone(&config);
+        move || {
+            let config = rc_config.borrow();
+            report::gen_post_run_report(&config);
+            let report_path = get_loc(Locations::Report);
+            match open::that(&report_path) {
+                Ok(()) => {
+                    info!("Report opened successfully");
+                }
+                Err(e) => {
+                    info!("Failed to auto open report, error: {e:?}. Report path: {report_path:?}");
+                }
             }
         }
-    }
-
+    });
+    ui.run().unwrap();
     Ok(())
 }

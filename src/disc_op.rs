@@ -11,28 +11,26 @@ use reqwest::Url;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
-    common,
+    common, get_loc,
     structs::{Config, PageData},
+    Locations,
 };
 
 #[instrument]
-pub fn storage(clean_start: bool, config: &Config) {
-    let project_dir = &format!("{}/{}", &config.dirs.base_dir, &config.dirs.project_subdir);
+pub fn init_storage(clean_start: bool) {
+    let base_config_dir = get_loc(Locations::BaseConfig);
+    let base_data_dir = get_loc(Locations::BaseData);
 
-    if clean_start {
-        if let Err(err) = fs::remove_dir_all(project_dir) {
-            error!("Failed to remove {:?}: {:?}", project_dir, err);
-        } else {
-            info!("Removed project directory: {:?}", project_dir);
-        }
-    }
-
-    let dirs = [
-        &format!("{}/{}", project_dir, &config.dirs.pages_subdir),
-        &format!("{}/{}", project_dir, &config.dirs.temp_subdir),
-    ];
+    let dirs = vec![base_config_dir, base_data_dir];
 
     for dir in &dirs {
+        if dir.exists() && clean_start {
+            if let Err(err) = fs::remove_dir_all(dir) {
+                warn!("Failed to remove {dir:?}: {err:?}");
+            } else {
+                info!("Removed directory: {dir:?}");
+            }
+        }
         if let Err(err) = fs::create_dir_all(dir) {
             error!("Failed to create {dir:?}: {err:?}");
         } else {
@@ -41,8 +39,8 @@ pub fn storage(clean_start: bool, config: &Config) {
     }
 }
 
-pub fn load_data_store(path_str: &str) -> anyhow::Result<BTreeMap<Url, PageData>> {
-    let data_store_path = Path::new(path_str);
+pub fn load_data_store(data_store_path: &PathBuf) -> anyhow::Result<BTreeMap<Url, PageData>> {
+    let path_str = data_store_path.to_string_lossy();
 
     if data_store_path.exists() {
         let mut file = File::open(data_store_path)
@@ -55,7 +53,7 @@ pub fn load_data_store(path_str: &str) -> anyhow::Result<BTreeMap<Url, PageData>
             .with_context(|| format!("Failed to parse hash file: {path_str}"))?;
         Ok(data_store)
     } else {
-        info!("Data store path does not exist: {}", path_str);
+        info!("Data store path does not exist: {path_str}");
         Ok(BTreeMap::new())
     }
 }
@@ -63,9 +61,8 @@ pub fn load_data_store(path_str: &str) -> anyhow::Result<BTreeMap<Url, PageData>
 #[instrument]
 pub fn save_data_store(
     page_datas: &BTreeMap<Url, PageData>,
-    path_str: &str,
+    data_store_path: &PathBuf,
 ) -> anyhow::Result<(), anyhow::Error> {
-    let data_store_path = Path::new(path_str);
     let mut data_store_file = if data_store_path.exists() {
         OpenOptions::new()
             .write(true)
@@ -101,10 +98,8 @@ pub fn save_page_data(
 ) -> anyhow::Result<()> {
     let now = Utc::now();
     let url_hash = common::hash_string(&url.to_string());
-    let save_data_path = Path::new(&config.dirs.base_dir)
-        .join(&config.dirs.project_subdir)
-        .join(&config.dirs.pages_subdir)
-        .join(url_hash.clone());
+
+    let save_data_path = get_loc(Locations::PagesSubdir).join(url_hash);
 
     if !save_data_path.exists() {
         fs::create_dir_all(&save_data_path)
