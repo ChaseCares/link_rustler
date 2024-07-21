@@ -19,7 +19,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
 
@@ -36,7 +36,7 @@ use tracing_subscriber::FmtSubscriber;
 
 slint::include_modules!();
 
-use enums::{CustomError, LinkType};
+use enums::{CustomError, LinkType, Locations};
 use structs::{ActivePages, AppState, Args, Config, PageData, State};
 
 mod common;
@@ -392,17 +392,6 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
 
 static PROJECT_NS: OnceLock<Option<ProjectDirs>> = OnceLock::new();
 
-enum Locations {
-    BaseConfig,
-    BaseData,
-    Config,
-    Report,
-    DataStore,
-    ExtensionsDir,
-    PagesSubdir,
-    GeckodriverBinary,
-}
-
 fn get_loc(loc: Locations) -> PathBuf {
     if let Some(dirs) =
         PROJECT_NS.get_or_init(|| ProjectDirs::from("dev", "chasecares", "link_rustler"))
@@ -416,6 +405,8 @@ fn get_loc(loc: Locations) -> PathBuf {
             Locations::ExtensionsDir => dirs.data_dir().join("extensions"),
             Locations::PagesSubdir => dirs.data_dir().join("pages"),
             Locations::GeckodriverBinary => dirs.data_dir().join("geckodriver"),
+            Locations::LogDir => dirs.data_dir().join("logs"),
+            Locations::LogPrefix => PathBuf::from("log_file.txt"),
         }
     } else {
         panic!("Failed to get project directories");
@@ -427,12 +418,19 @@ static OPERATING_SYSTEM: OnceLock<&str> = OnceLock::new();
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    let file_appender: tracing_appender::rolling::RollingFileAppender =
+        tracing_appender::rolling::daily(get_loc(Locations::LogDir), get_loc(Locations::LogPrefix));
+
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(tracing::Level::INFO)
+        .with_writer(Mutex::new(file_appender))
+        .with_ansi(false)
+        .with_writer(std::io::stdout)
         .with_file(true)
         .with_line_number(true)
         // .with_env_filter(EnvFilter::from_default_env())
+        .with_max_level(tracing::Level::INFO)
         .finish();
+
     tracing::subscriber::set_global_default(subscriber)?;
 
     let args = Args::parse();

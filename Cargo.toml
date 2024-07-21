@@ -35,6 +35,7 @@ tracing = "0.1"
 tar = "0.4"
 slint = "1.6"
 directories = "5.0"
+tracing-appender = "0.2"
 
 [build-dependencies]
 slint-build = "1.6"
