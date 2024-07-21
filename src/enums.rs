@@ -66,3 +66,15 @@ pub enum OS {
     Linux,
     Mac,
 }
+pub enum Locations {
+    BaseConfig,
+    BaseData,
+    Config,
+    Report,
+    DataStore,
+    ExtensionsDir,
+    PagesSubdir,
+    GeckodriverBinary,
+    LogPrefix,
+    LogDir,
+}
