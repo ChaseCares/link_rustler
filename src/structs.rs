@@ -15,15 +15,10 @@ use crate::MainWindow;
 use crate::{Settings, UpdateCheck};
 
 #[derive(Parser, Debug)]
+#[clap(name = "Link Rustler", version = env!("CARGO_PKG_VERSION"), author = "ChaseCares")]
 pub struct Args {
-    #[arg(short, long)]
-    pub config_path: Option<String>,
-
     #[arg(long)]
     pub clean_start: bool,
-
-    #[arg(long)]
-    pub check_this_url: Option<Vec<String>>,
 
     #[arg(long, default_value = "false")]
     pub check_for_update: bool,
