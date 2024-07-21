@@ -1,4 +1,5 @@
 use slint::ComponentHandle;
+use tracing::{error, info};
 
 use crate::structs::AppState;
 use crate::MainWindow;
@@ -57,7 +58,7 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
 
     match self_update::version::bump_is_greater(current_version, &latest.version) {
         Ok(true) => {
-            println!(
+            info!(
                 "New update available: v{}, current version: v{}",
                 latest.version, current_version
             );
@@ -71,35 +72,35 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
             if app_state.self_update {
                 match status.update() {
                     Ok(_) => {
-                        println!("Update successful!");
+                        info!("Update successful!");
                         app_state.add_to_self_update_log("Update successful!", ui);
                         ui.global::<UpdateCheck>()
                             .set_self_update_button_text("Up to date".into());
                     }
                     Err(e) => {
-                        println!("Error updating: {e}");
+                        error!("Error updating: {e}");
                         app_state.add_to_self_update_log(&format!("Error updating: {e}"), ui);
                     }
                 }
             } else {
                 ui.global::<UpdateCheck>()
                     .set_self_update_button_text(format!("Update to v{}", latest.version).into());
-                println!("app_state.self_update: {}", app_state.self_update);
+                info!("app_state.self_update: {}", app_state.self_update);
                 app_state.self_update = true;
             }
         }
         Ok(false) if current_version == latest.version => {
-            println!("You are already using the latest version.");
+            info!("You are already using the latest version.");
             app_state.add_to_self_update_log("You are already using the latest version.", ui);
             ui.global::<UpdateCheck>()
                 .set_self_update_button_text("Up to date".into());
         }
         Ok(false) => {
-            println!("You are using a newer version than the latest.");
+            info!("You are using a newer version than the latest.");
             app_state.add_to_self_update_log("You are using a newer version than the latest.", ui);
         }
         Err(e) => {
-            println!("Error comparing versions: {e}");
+            error!("Error comparing versions: {e}");
             app_state.add_to_self_update_log(&format!("Error comparing versions: {e}"), ui);
         }
     }
