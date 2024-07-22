@@ -19,12 +19,13 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{Mutex, OnceLock},
+    sync::OnceLock,
     time::Duration,
 };
 
 use anyhow::Context;
 use clap::Parser;
+use common::init_tracing;
 use directories::ProjectDirs;
 use driver::new_tab;
 use reqwest::{Client, Url};
@@ -32,7 +33,6 @@ use slint::ComponentHandle;
 use thirtyfour::WebDriver;
 use tokio::time::{sleep, Instant};
 use tracing::{error, info, instrument, warn};
-use tracing_subscriber::FmtSubscriber;
 
 slint::include_modules!();
 
@@ -418,20 +418,7 @@ static OPERATING_SYSTEM: OnceLock<&str> = OnceLock::new();
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let file_appender: tracing_appender::rolling::RollingFileAppender =
-        tracing_appender::rolling::daily(get_loc(Locations::LogDir), get_loc(Locations::LogPrefix));
-
-    let subscriber = FmtSubscriber::builder()
-        .with_writer(Mutex::new(file_appender))
-        .with_ansi(false)
-        .with_writer(std::io::stdout)
-        .with_file(true)
-        .with_line_number(true)
-        // .with_env_filter(EnvFilter::from_default_env())
-        .with_max_level(tracing::Level::INFO)
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber)?;
+    let _guard = init_tracing();
 
     let args = Args::parse();
 

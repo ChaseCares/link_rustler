@@ -1,10 +1,32 @@
 use blake2::{Blake2s256, Digest};
 use image_hasher::HasherConfig;
-use tracing::info;
+use tracing::{error, info};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{fmt, layer::SubscriberExt};
 
-use crate::enums::{Arch, OS};
+use crate::{
+    enums::{Arch, Locations, OS},
+    get_loc,
+};
 
-use crate::{OPERATING_SYSTEM, ARCHITECTURE};
+use crate::{ARCHITECTURE, OPERATING_SYSTEM};
+
+pub fn init_tracing() -> WorkerGuard {
+    let file_appender: tracing_appender::rolling::RollingFileAppender =
+        tracing_appender::rolling::daily(get_loc(Locations::LogDir), get_loc(Locations::LogPrefix));
+    let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    tracing::subscriber::set_global_default(
+        fmt::Subscriber::builder()
+            .with_file(true)
+            .with_line_number(true)
+            .with_max_level(tracing::Level::INFO)
+            .finish()
+            .with(fmt::Layer::default().with_writer(file_writer)),
+    )
+    .expect("Unable to set global tracing subscriber");
+
+    guard
+}
 
 pub fn hash_img(image: &image::DynamicImage) -> String {
     let hasher = HasherConfig::new().to_hasher();
