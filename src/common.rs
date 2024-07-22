@@ -27,6 +27,10 @@ pub fn init_tracing() -> WorkerGuard {
     )
     .expect("Unable to set global tracing subscriber");
 
+    let num_log_files_to_keep = 7;
+    let log_dir = get_loc(Locations::LogDir);
+    remove_old_files(&log_dir, num_log_files_to_keep);
+
     guard
 }
 
