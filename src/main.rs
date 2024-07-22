@@ -550,7 +550,7 @@ async fn main() -> Result<(), anyhow::Error> {
         move || {
             info!("Running link checker");
             let ui = ui_weak.upgrade().unwrap();
-            let now = Instant::now();
+            let start = Instant::now();
             slint::spawn_local(async move {
                 ui.set_link_checker_running(true);
                 sleep(Duration::from_secs(10)).await;
@@ -576,7 +576,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 result.unwrap();
 
                 std::mem::forget(tokio_runtime);
-                info!("Link checking completed in: {:?}", now.elapsed());
+                let duration = start.elapsed();
+                info!(
+                    "Finished in {} minutes {} seconds.",
+                    duration.as_secs() / 60,
+                    duration.as_secs() % 60
+                );
                 ui.set_link_checker_running(false);
             })
             .unwrap();
