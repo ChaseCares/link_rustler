@@ -1,3 +1,5 @@
+use std::{fs, path::PathBuf};
+
 use blake2::{Blake2s256, Digest};
 use image_hasher::HasherConfig;
 use tracing::{error, info};
@@ -85,4 +87,29 @@ pub fn get_os_arch_for_geckodriver() -> String {
         },
     }
     .to_string()
+}
+
+pub fn remove_old_files(save_data_path: &PathBuf, num_of_local_pages: usize) {
+    if let Ok(entries) = fs::read_dir(save_data_path) {
+        let mut files_to_remove = entries.filter_map(Result::ok).collect::<Vec<_>>();
+
+        files_to_remove.sort_by_key(|entry| {
+            entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        });
+
+        let remove_files = files_to_remove
+            .into_iter()
+            .rev()
+            .skip(num_of_local_pages)
+            .map(|entry| entry.path());
+
+        for file in remove_files {
+            if let Err(err) = fs::remove_file(&file) {
+                error!("Failed to remove file: {:?}. Error: {:?}", file, err);
+            }
+        }
+    }
 }

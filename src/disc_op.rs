@@ -11,7 +11,8 @@ use reqwest::Url;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
-    common, get_loc,
+    common::{self, remove_old_files},
+    get_loc,
     structs::{Config, PageData},
     Locations,
 };
@@ -106,30 +107,7 @@ pub fn save_page_data(
             .with_context(|| format!("Failed to create directory: {:?}", &save_data_path))?;
     }
 
-    let mut remove_files = Vec::new();
-
-    if let Ok(old_files) = fs::read_dir(&save_data_path) {
-        let files: Vec<_> = old_files
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                let path = entry.path();
-                path.extension()
-                    .map_or(false, |ext| ext == "html" || ext == "png")
-            })
-            .collect();
-
-        remove_files = files
-            .into_iter()
-            .skip(config.num_of_local_pages)
-            .map(|e| e.path())
-            .collect();
-    }
-
-    for file in &remove_files {
-        if let Err(err) = fs::remove_file(file) {
-            error!("Failed to remove file: {:?}. Error: {:?}", file, err);
-        }
-    }
+    remove_old_files(&save_data_path, config.num_of_local_pages);
 
     let page_file_name = format!("page_{now:?}.html");
     let screenshot_file_name = format!("screenshot_{now:?}.png");
