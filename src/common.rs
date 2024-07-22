@@ -89,8 +89,8 @@ pub fn get_os_arch_for_geckodriver() -> String {
     .to_string()
 }
 
-pub fn remove_old_files(save_data_path: &PathBuf, num_of_local_pages: usize) {
-    if let Ok(entries) = fs::read_dir(save_data_path) {
+pub fn remove_old_files(dir_path: &PathBuf, num_of_file_to_keep: usize) {
+    if let Ok(entries) = fs::read_dir(dir_path) {
         let mut files_to_remove = entries.filter_map(Result::ok).collect::<Vec<_>>();
 
         files_to_remove.sort_by_key(|entry| {
@@ -103,7 +103,7 @@ pub fn remove_old_files(save_data_path: &PathBuf, num_of_local_pages: usize) {
         let remove_files = files_to_remove
             .into_iter()
             .rev()
-            .skip(num_of_local_pages)
+            .skip(num_of_file_to_keep)
             .map(|entry| entry.path());
 
         for file in remove_files {
