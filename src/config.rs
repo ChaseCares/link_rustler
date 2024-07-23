@@ -16,8 +16,6 @@ use crate::{ConfigProperty, Settings};
 pub fn load(ui: &MainWindow, app_state: &mut AppState) -> anyhow::Result<Config> {
     app_state.add_to_config_log("Checking configuration.", ui);
     let config_path = get_loc(Locations::Config);
-    let default_base_path = config_path.parent().unwrap();
-
     let default_config = Config::default();
 
     let config = if config_path.exists() {
@@ -27,8 +25,6 @@ pub fn load(ui: &MainWindow, app_state: &mut AppState) -> anyhow::Result<Config>
         toml::from_str(&config_str)
             .with_context(|| format!("Failed to parse config file {config_path:?}"))?
     } else {
-        fs::create_dir(default_base_path)
-            .with_context(|| format!("Failed to create data directory {default_base_path:?}"))?;
         write_config_file(&default_config, &config_path)?;
 
         app_state.add_to_config_log(

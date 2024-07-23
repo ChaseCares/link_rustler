@@ -425,12 +425,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let ui = MainWindow::new()?;
     let app_state = Rc::new(RefCell::new(AppState::new()));
 
+    disc_op::init_storage(args.clean_start);
     let config = match config::load(&ui, &mut app_state.borrow_mut()) {
         Ok(config) => Rc::new(RefCell::new(config)),
         Err(e) => return Err(anyhow::anyhow!(e.to_string())),
     };
-
-    disc_op::init_storage(args.clean_start);
 
     let ui_weak = ui.as_weak();
     ui.global::<UpdateCheck>().on_self_check_update({
