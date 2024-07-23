@@ -139,7 +139,7 @@ async fn get_urls(
     } else {
         let pdf = get_pdf_github(external_source_url.unwrap())
             .await
-            .with_context(|| "Failed to fetch PDF from GitHub")?
+            .context("Failed to fetch PDF from GitHub")?
             .as_bytes()
             .to_vec();
         get_unique_links(&pdf)
@@ -154,10 +154,10 @@ async fn get_urls(
     Ok(urls_to_check)
 }
 
-fn get_unique_links(raw_pdf: &[u8]) -> HashSet<Url> {
+fn get_unique_links(pdf: &[u8]) -> HashSet<Url> {
     let re_bytes = regex::bytes::Regex::new(r"/Type/Action/S/URI/URI\((.*?)\)").unwrap();
     let raw_links: HashSet<Url> = re_bytes
-        .captures_iter(raw_pdf)
+        .captures_iter(pdf)
         .map(|capture| {
             std::str::from_utf8(capture.get(1).unwrap().as_bytes()).expect("Invalid UTF-8")
         })
