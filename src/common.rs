@@ -23,7 +23,11 @@ pub fn init_tracing() -> WorkerGuard {
             .with_line_number(true)
             .with_max_level(tracing::Level::INFO)
             .finish()
-            .with(fmt::Layer::default().with_writer(file_writer)),
+            .with(
+                fmt::Layer::default()
+                    .with_ansi(false)
+                    .with_writer(file_writer),
+            ),
     )
     .expect("Unable to set global tracing subscriber");
 
