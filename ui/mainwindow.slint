@@ -11,14 +11,10 @@ export component MainWindow inherits Window {
     title: "Link Rustler Manager";
     min-width: 600px;
 
-    property <length> close_button_Width: 55px;
-
     in property <bool> link_checker_running: false;
 
-    callback close_window();
     callback run_link_checker();
     callback gen_report();
-    callback cause_error();
 
     VerticalLayout {
         HorizontalBox {
@@ -26,18 +22,7 @@ export component MainWindow inherits Window {
             padding: 5px;
 
             Button {
-                width: root.close_button_Width;
-
-                checked: false;
-                text: "Close";
-
-                clicked => {
-                    root.close_window();
-                }
-            }
-
-            Button {
-                min-width: parent.width * 0.5 - root.close_button_Width - 10px;
+                min-width: parent.width * 0.5 - 10px;
                 text: root.link_checker_running ? "Running..." : "Run link checker";
 
                 enabled: {
@@ -50,7 +35,7 @@ export component MainWindow inherits Window {
             }
 
             Button {
-                min-width: parent.width * 0.5 - root.close_button_Width - 10px;
+                min-width: parent.width * 0.5 - 10px;
 
                 text: "Generate report";
 

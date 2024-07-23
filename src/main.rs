@@ -537,15 +537,6 @@ async fn main() -> Result<(), anyhow::Error> {
     });
 
     let ui_weak = ui.as_weak();
-    ui.on_close_window({
-        move || {
-            if let Some(ui) = ui_weak.upgrade() {
-                ui.hide().unwrap();
-            }
-        }
-    });
-
-    let ui_weak = ui.as_weak();
     ui.on_run_link_checker({
         move || {
             info!("Running link checker");
