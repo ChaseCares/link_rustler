@@ -4,6 +4,14 @@ import { UpdateCheck } from "globals.slint";
 
 export component UpdateView inherits Window {
     VerticalLayout {
+        Text {
+            height: 30px;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+
+            text: "!!! Updating can be slow with no feedback, please be patient. !!!";
+        }
+
         GridBox {
             Rectangle { }
 
