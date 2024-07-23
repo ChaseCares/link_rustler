@@ -540,8 +540,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let ui_weak = ui.as_weak();
     ui.on_close_window({
         move || {
-            let ui = ui_weak.upgrade().unwrap();
+            if let Some(ui) = ui_weak.upgrade() {
             ui.hide().unwrap();
+        }
         }
     });
 
@@ -549,7 +550,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ui.on_run_link_checker({
         move || {
             info!("Running link checker");
-            let ui = ui_weak.upgrade().unwrap();
+            if let Some(ui) = ui_weak.upgrade() {
             let start = Instant::now();
             slint::spawn_local(async move {
                 ui.set_link_checker_running(true);
@@ -585,6 +586,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 ui.set_link_checker_running(false);
             })
             .unwrap();
+        }
         }
     });
 
