@@ -319,16 +319,6 @@ pub async fn new_tab(driver: WebDriver, url: &str) -> anyhow::Result<WebDriver> 
         }
     }
 
-    info!("Waiting for page to load");
-    // pfizeroncologytogether changes the name of the window after the page has loaded
-    if url.contains("pfizeroncologytogether") {
-        info!("Sleeping for 5 seconds to allow problematic pages to load");
-        sleep(Duration::from_secs(5)).await;
-    }
-
-    // If you try to set the name too quickly it doesn't stick *shrug*
-    sleep(Duration::from_secs(1)).await;
-
     // Setting the name must come after the goto
     driver
         .set_window_name(url)
