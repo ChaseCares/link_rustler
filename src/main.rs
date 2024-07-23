@@ -541,8 +541,8 @@ async fn main() -> Result<(), anyhow::Error> {
     ui.on_close_window({
         move || {
             if let Some(ui) = ui_weak.upgrade() {
-            ui.hide().unwrap();
-        }
+                ui.hide().unwrap();
+            }
         }
     });
 
@@ -551,42 +551,42 @@ async fn main() -> Result<(), anyhow::Error> {
         move || {
             info!("Running link checker");
             if let Some(ui) = ui_weak.upgrade() {
-            let start = Instant::now();
-            slint::spawn_local(async move {
-                ui.set_link_checker_running(true);
-                sleep(Duration::from_secs(10)).await;
-                let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
-                let result = tokio_runtime
-                    .spawn(async move {
-                        // TODO: Use config without having to reload it
-                        let config = config::no_ui_load().unwrap();
+                let start = Instant::now();
+                slint::spawn_local(async move {
+                    ui.set_link_checker_running(true);
+                    sleep(Duration::from_secs(10)).await;
+                    let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
+                    let result = tokio_runtime
+                        .spawn(async move {
+                            // TODO: Use config without having to reload it
+                            let config = config::no_ui_load().unwrap();
 
-                        match link_checker(&config, None).await {
-                            Ok(()) => {
-                                info!("Link checking completed successfully");
+                            match link_checker(&config, None).await {
+                                Ok(()) => {
+                                    info!("Link checking completed successfully");
+                                }
+                                Err(e) => {
+                                    anyhow::bail!("{e:?}")
+                                }
                             }
-                            Err(e) => {
-                                anyhow::bail!("{e:?}")
-                            }
-                        }
 
-                        Ok(())
-                    })
-                    .await
-                    .unwrap();
-                result.unwrap();
+                            Ok(())
+                        })
+                        .await
+                        .unwrap();
+                    result.unwrap();
 
-                std::mem::forget(tokio_runtime);
-                let duration = start.elapsed();
-                info!(
-                    "Finished in {} minutes {} seconds.",
-                    duration.as_secs() / 60,
-                    duration.as_secs() % 60
-                );
-                ui.set_link_checker_running(false);
-            })
-            .unwrap();
-        }
+                    std::mem::forget(tokio_runtime);
+                    let duration = start.elapsed();
+                    info!(
+                        "Finished in {} minutes {} seconds.",
+                        duration.as_secs() / 60,
+                        duration.as_secs() % 60
+                    );
+                    ui.set_link_checker_running(false);
+                })
+                .unwrap();
+            }
         }
     });
 
@@ -606,6 +606,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     });
+
     ui.run().unwrap();
     Ok(())
 }

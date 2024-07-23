@@ -8,7 +8,7 @@ use crate::UpdateCheck;
 
 pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
     info!("Checking for updates...");
-        app_state.add_to_self_update_log("Checking for updates...", ui);
+    app_state.add_to_self_update_log("Checking for updates...", ui);
 
     let current_version = env!("CARGO_PKG_VERSION");
     app_state.add_to_self_update_log(&format!("Current version 2: v{current_version}"), ui);
