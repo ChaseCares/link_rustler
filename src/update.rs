@@ -7,25 +7,11 @@ use crate::MainWindow;
 use crate::UpdateCheck;
 
 pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
-    if ui
-        .global::<UpdateCheck>()
-        .get_actively_checking_for_update()
-    {
-        app_state.add_to_self_update_log("Already checking for updates...", ui);
-        return;
-    }
-
-    ui.global::<UpdateCheck>()
-        .set_actively_checking_for_update(true);
-
-    if !app_state.self_update {
+    info!("Checking for updates...");
         app_state.add_to_self_update_log("Checking for updates...", ui);
-    }
 
     let current_version = env!("CARGO_PKG_VERSION");
-    if !app_state.self_update {
-        app_state.add_to_self_update_log(&format!("Current version: v{current_version}"), ui);
-    }
+    app_state.add_to_self_update_log(&format!("Current version 2: v{current_version}"), ui);
 
     let status = match self_update::backends::github::Update::configure()
         .repo_owner("ChaseCares")
@@ -39,6 +25,7 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
     {
         Ok(status) => status,
         Err(e) => {
+            error!("Error configuring update: {e}");
             app_state.add_to_self_update_log(&format!("Error configuring update: {e}"), ui);
             ui.global::<UpdateCheck>()
                 .set_actively_checking_for_update(false);
@@ -49,6 +36,7 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
     let latest = match status.get_latest_release() {
         Ok(latest) => latest,
         Err(e) => {
+            error!("Error fetching latest release: {e}");
             app_state.add_to_self_update_log(&format!("Error fetching latest release: {e}"), ui);
             ui.global::<UpdateCheck>()
                 .set_actively_checking_for_update(false);
@@ -72,8 +60,11 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
             if app_state.self_update_complete {
                 match status.update() {
                     Ok(_) => {
-                        info!("Update successful!");
-                        app_state.add_to_self_update_log("Update successful!", ui);
+                        info!("Update successful! Restart the application to apply the update.");
+                        app_state.add_to_self_update_log(
+                            "Update successful! Restart the application to apply the update.",
+                            ui,
+                        );
                         ui.global::<UpdateCheck>()
                             .set_self_update_button_text("Up to date".into());
                     }
@@ -105,6 +96,7 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
         }
     }
 
+    info!("Checking for updates complete.");
     ui.global::<UpdateCheck>()
         .set_actively_checking_for_update(false);
 }
