@@ -29,7 +29,7 @@ pub struct AppState {
     pub self_update_log: String,
     pub geckodriver_update_log: String,
     pub config_log: String,
-    pub self_update: bool,
+    pub self_update_complete: bool,
 }
 
 impl AppState {
@@ -38,7 +38,7 @@ impl AppState {
             self_update_log: String::new(),
             geckodriver_update_log: String::new(),
             config_log: String::new(),
-            self_update: true,
+            self_update_complete: false,
         }
     }
 

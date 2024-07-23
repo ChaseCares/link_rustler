@@ -62,14 +62,14 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
                 "New update available: v{}, current version: v{}",
                 latest.version, current_version
             );
-            if !app_state.self_update {
+            if !app_state.self_update_complete {
                 app_state.add_to_self_update_log(
                     &format!("New update available: v{}", latest.version),
                     ui,
                 );
             }
 
-            if app_state.self_update {
+            if app_state.self_update_complete {
                 match status.update() {
                     Ok(_) => {
                         info!("Update successful!");
@@ -85,8 +85,8 @@ pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
             } else {
                 ui.global::<UpdateCheck>()
                     .set_self_update_button_text(format!("Update to v{}", latest.version).into());
-                info!("app_state.self_update: {}", app_state.self_update);
-                app_state.self_update = true;
+                info!("app_state.self_update: {}", app_state.self_update_complete);
+                app_state.self_update_complete = true;
             }
         }
         Ok(false) if current_version == latest.version => {
