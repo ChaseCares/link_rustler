@@ -20,7 +20,7 @@ pub struct Args {
     #[arg(long)]
     pub clean_start: bool,
 
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "true")]
     pub check_for_update: bool,
 }
 
