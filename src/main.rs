@@ -15,8 +15,6 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
-    fs::File,
-    io::Read,
     path::{Path, PathBuf},
     rc::Rc,
     sync::OnceLock,
@@ -44,50 +42,10 @@ mod config;
 mod disc_op;
 mod driver;
 mod enums;
+mod pdf;
 mod report;
 mod structs;
 mod update;
-
-#[instrument]
-async fn get_pdf_github(url: Url) -> anyhow::Result<String> {
-    let client = Client::new();
-
-    let split_path = url.path().split('/').collect::<Vec<&str>>();
-
-    let repo_owner = split_path[1];
-    let repo_name = split_path[2];
-    let branch = split_path[4];
-    let file_path = split_path[5..].join("/");
-
-    let pdf_url = format!("https://github.com/{repo_owner}/{repo_name}/raw/{branch}/{file_path}");
-
-    let pdf = client
-        .get(&pdf_url)
-        .send()
-        .await
-        .context("Failed to download PDF")?
-        .text()
-        .await
-        .context("Failed to read PDF content")?;
-
-    info!("PDF fetched successfully from: {}", pdf_url);
-
-    Ok(pdf)
-}
-
-fn pdf_contents(pdf_path: &str) -> anyhow::Result<Vec<u8>> {
-    let path = Path::new(pdf_path);
-    let mut buf = Vec::new();
-
-    let mut file = File::open(path).context(format!("Failed to open PDF file: {pdf_path}"))?;
-
-    let _ = file
-        .read_to_end(&mut buf)
-        .context(format!("Failed to read PDF file: {pdf_path}"))?;
-
-    info!("PDF contents read successfully from: {}", pdf_path);
-    Ok(buf)
-}
 
 async fn download_file(url: String) -> Option<String> {
     let client = Client::new();
@@ -120,51 +78,6 @@ fn check_link_type(url: &Url) -> anyhow::Result<LinkType> {
     };
 
     Ok(link_type)
-}
-
-async fn get_urls(
-    pdf_path: Option<String>,
-    external_source_url: Option<Url>,
-    given_urls: Option<Vec<String>>,
-) -> anyhow::Result<HashSet<Url>> {
-    let urls_to_check: HashSet<Url> = if let Some(given_urls) = given_urls {
-        given_urls
-            .iter()
-            .map(|url| Url::parse(url))
-            .filter_map(Result::ok)
-            .collect()
-    } else if let Some(pdf_path) = pdf_path {
-        let pdf = pdf_contents(&pdf_path)?;
-        get_unique_links(&pdf)
-    } else {
-        let pdf = get_pdf_github(external_source_url.unwrap())
-            .await
-            .context("Failed to fetch PDF from GitHub")?
-            .as_bytes()
-            .to_vec();
-        get_unique_links(&pdf)
-    };
-
-    if urls_to_check.is_empty() {
-        anyhow::bail!("No links found in PDF");
-    }
-
-    info!("Total number of links: {:?}", urls_to_check.len());
-
-    Ok(urls_to_check)
-}
-
-fn get_unique_links(pdf: &[u8]) -> HashSet<Url> {
-    let re_bytes = regex::bytes::Regex::new(r"/Type/Action/S/URI/URI\((.*?)\)").unwrap();
-    let raw_links: HashSet<Url> = re_bytes
-        .captures_iter(pdf)
-        .map(|capture| {
-            std::str::from_utf8(capture.get(1).unwrap().as_bytes()).expect("Invalid UTF-8")
-        })
-        .map(Url::parse)
-        .filter_map(Result::ok)
-        .collect();
-    raw_links
 }
 
 fn title_check(title: &str) -> Result<(), CustomError> {
@@ -355,7 +268,7 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
     let mut page_datas =
         disc_op::load_data_store(&datastore_path).context("Failed to load data store")?;
 
-    let urls_to_check = get_urls(config.pdf_path.clone(), config.pdf_url.clone(), urls)
+    let urls_to_check = pdf::get_urls(config.pdf_path.clone(), config.pdf_url.clone(), urls)
         .await
         .context("Failed to get URLs to check")?;
 
