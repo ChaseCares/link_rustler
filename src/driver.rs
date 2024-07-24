@@ -18,8 +18,7 @@ use tracing::{error, info, instrument, warn};
 use url::Url;
 
 use crate::{
-    common::get_os_arch_for_geckodriver,
-    get_loc,
+    utilities::{get_loc, get_os_arch_for_geckodriver},
     structs::{self, Config},
     Locations,
 };

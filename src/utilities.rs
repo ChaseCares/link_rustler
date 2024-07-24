@@ -1,15 +1,15 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, time::Duration};
 
 use blake2::{Blake2s256, Digest};
+use directories::ProjectDirs;
 use image_hasher::HasherConfig;
+use reqwest::Client;
+use tokio::time::sleep;
 use tracing::{error, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, layer::SubscriberExt};
 
-use crate::{
-    enums::{Arch, Locations, OS},
-    get_loc,
-};
+use crate::enums::{Arch, Locations, OS};
 
 use crate::{ARCHITECTURE, OPERATING_SYSTEM};
 
@@ -119,5 +119,37 @@ pub fn remove_old_files(dir_path: &PathBuf, num_of_file_to_keep: usize) {
                 error!("Failed to remove file: {:?}. Error: {:?}", file, err);
             }
         }
+    }
+}
+
+pub fn get_loc(loc: Locations) -> PathBuf {
+    if let Some(dirs) =
+        crate::PROJECT_NS.get_or_init(|| ProjectDirs::from("dev", "chasecares", "link_rustler"))
+    {
+        match loc {
+            Locations::BaseConfig => dirs.config_dir().to_path_buf(),
+            Locations::BaseData => dirs.data_dir().to_path_buf(),
+            Locations::Config => dirs.config_dir().join("config.toml"),
+            Locations::Report => dirs.data_dir().join("report.html"),
+            Locations::DataStore => dirs.data_dir().join("data_store.json"),
+            Locations::ExtensionsDir => dirs.data_dir().join("extensions"),
+            Locations::PagesSubdir => dirs.data_dir().join("pages"),
+            Locations::GeckodriverBinary => dirs.data_dir().join("geckodriver"),
+            Locations::LogDir => dirs.data_dir().join("logs"),
+            Locations::LogPrefix => PathBuf::from("log_file.txt"),
+        }
+    } else {
+        panic!("Failed to get project directories");
+    }
+}
+
+pub async fn download_file(url: String) -> Option<String> {
+    let client = Client::new();
+    let res = client.get(url).send().await.unwrap().text().await;
+    sleep(Duration::from_secs(1)).await;
+
+    match res {
+        Ok(_) => Some(res.unwrap()),
+        Err(_) => None,
     }
 }

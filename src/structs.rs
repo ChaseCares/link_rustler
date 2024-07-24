@@ -8,7 +8,7 @@ use slint::ComponentHandle;
 use tokio::time::Instant;
 use url::Url;
 
-use crate::common::{hash_img, hash_string};
+use crate::utilities::{hash_img, hash_string};
 use crate::enums::{CustomError, InvalidReason, LinkType, ValidReason};
 use crate::MainWindow;
 

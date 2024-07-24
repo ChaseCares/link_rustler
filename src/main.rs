@@ -15,7 +15,7 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
     rc::Rc,
     sync::OnceLock,
     time::Duration,
@@ -23,10 +23,10 @@ use std::{
 
 use anyhow::Context;
 use clap::Parser;
-use common::init_tracing;
+use utilities::{get_loc, init_tracing};
 use directories::ProjectDirs;
 use driver::new_tab;
-use reqwest::{Client, Url};
+use reqwest::Url;
 use slint::ComponentHandle;
 use thirtyfour::WebDriver;
 use tokio::time::{sleep, Instant};
@@ -37,7 +37,7 @@ slint::include_modules!();
 use enums::{CustomError, LinkType, Locations};
 use structs::{ActivePages, AppState, Args, Config, PageData, State};
 
-mod common;
+mod utilities;
 mod config;
 mod disc_op;
 mod driver;
@@ -46,17 +46,6 @@ mod pdf;
 mod report;
 mod structs;
 mod update;
-
-async fn download_file(url: String) -> Option<String> {
-    let client = Client::new();
-    let res = client.get(url).send().await.unwrap().text().await;
-    sleep(Duration::from_secs(1)).await;
-
-    match res {
-        Ok(_) => Some(res.unwrap()),
-        Err(_) => None,
-    }
-}
 
 #[instrument]
 fn check_link_type(url: &Url) -> anyhow::Result<LinkType> {
@@ -123,7 +112,7 @@ async fn check_link(
             }
 
             let mut error = None;
-            if common::hash_img(&img) == *"AAAAAAAAAAA" {
+            if utilities::hash_img(&img) == *"AAAAAAAAAAA" {
                 error = Some(CustomError::BadScreenshot);
             }
 
@@ -151,7 +140,7 @@ async fn check_link(
         }
 
         LinkType::Content => {
-            let content = download_file(url.to_string()).await.unwrap_or_default();
+            let content = utilities::download_file(url.to_string()).await.unwrap_or_default();
             State::new(&content, None, None, LinkType::Content, None)
         }
 
@@ -285,7 +274,7 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
         if let std::collections::btree_map::Entry::Vacant(e) = page_datas.entry(url.clone()) {
             let _ = e.insert(PageData::new(
                 state,
-                common::hash_string(&url.to_string()),
+                utilities::hash_string(&url.to_string()),
                 None,
             ));
         } else if let Some(page_data) = page_datas.get_mut(&url) {
@@ -304,28 +293,6 @@ async fn link_checker(config: &Config, urls: Option<Vec<String>>) -> anyhow::Res
 }
 
 static PROJECT_NS: OnceLock<Option<ProjectDirs>> = OnceLock::new();
-
-fn get_loc(loc: Locations) -> PathBuf {
-    if let Some(dirs) =
-        PROJECT_NS.get_or_init(|| ProjectDirs::from("dev", "chasecares", "link_rustler"))
-    {
-        match loc {
-            Locations::BaseConfig => dirs.config_dir().to_path_buf(),
-            Locations::BaseData => dirs.data_dir().to_path_buf(),
-            Locations::Config => dirs.config_dir().join("config.toml"),
-            Locations::Report => dirs.data_dir().join("report.html"),
-            Locations::DataStore => dirs.data_dir().join("data_store.json"),
-            Locations::ExtensionsDir => dirs.data_dir().join("extensions"),
-            Locations::PagesSubdir => dirs.data_dir().join("pages"),
-            Locations::GeckodriverBinary => dirs.data_dir().join("geckodriver"),
-            Locations::LogDir => dirs.data_dir().join("logs"),
-            Locations::LogPrefix => PathBuf::from("log_file.txt"),
-        }
-    } else {
-        panic!("Failed to get project directories");
-    }
-}
-
 static ARCHITECTURE: OnceLock<&str> = OnceLock::new();
 static OPERATING_SYSTEM: OnceLock<&str> = OnceLock::new();
 
