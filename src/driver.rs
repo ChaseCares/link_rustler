@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[instrument]
-async fn github_api_request(
+async fn get_latest_github(
     github_username: &String,
     repo_owner: &String,
     repo_name: &String,
@@ -69,7 +69,7 @@ async fn get_extension_github(
         .build()
         .context("Failed to create HTTP client")?;
 
-    let json = github_api_request(
+    let json = get_latest_github(
         github_username,
         repo_owner,
         extension_name,
