@@ -1,10 +1,7 @@
 use slint::ComponentHandle;
 use tracing::{error, info};
 
-use crate::structs::AppState;
-use crate::MainWindow;
-
-use crate::UpdateCheck;
+use crate::{structs::AppState, MainWindow, UpdateCheck};
 
 pub fn helper(ui: &MainWindow, app_state: &mut AppState) {
     info!("Checking for updates...");

@@ -18,8 +18,8 @@ use tracing::{error, info, instrument, warn};
 use url::Url;
 
 use crate::{
+    structs,
     utilities::{get_loc, get_os_arch_for_geckodriver},
-    structs::{self, Config},
     Locations,
 };
 
@@ -124,7 +124,7 @@ async fn get_extension_github(
 }
 
 #[instrument]
-pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebDriver> {
+pub async fn fire_up_and_setup_the_gecko(config: &structs::Config) -> anyhow::Result<WebDriver> {
     let ip = &config.gecko.ip;
     let port = &config.gecko.port;
 

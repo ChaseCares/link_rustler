@@ -9,9 +9,10 @@ use tracing::{error, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, layer::SubscriberExt};
 
-use crate::enums::{Arch, Locations, OS};
-
-use crate::{ARCHITECTURE, OPERATING_SYSTEM};
+use crate::{
+    enums::{Arch, Locations, OS},
+    ARCHITECTURE, OPERATING_SYSTEM,
+};
 
 pub fn init_tracing() -> WorkerGuard {
     let file_appender: tracing_appender::rolling::RollingFileAppender =

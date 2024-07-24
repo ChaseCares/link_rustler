@@ -11,9 +11,9 @@ use reqwest::Url;
 use tracing::{error, info, instrument, warn};
 
 use crate::{
-    utilities::{self, remove_old_files},
     get_loc,
     structs::{Config, PageData},
+    utilities::{hash_string, remove_old_files},
     Locations,
 };
 
@@ -98,7 +98,7 @@ pub fn save_page_data(
     img: &image::DynamicImage,
 ) -> anyhow::Result<()> {
     let now = Utc::now();
-    let url_hash = utilities::hash_string(&url.to_string());
+    let url_hash = hash_string(&url.to_string());
 
     let save_data_path = get_loc(Locations::PagesSubdir).join(url_hash);
 

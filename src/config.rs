@@ -5,13 +5,11 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 use tracing::info;
 use url::Url;
 
-use crate::MainWindow;
 use crate::{
     get_loc,
     structs::{AppState, Config},
-    Locations,
+    ConfigProperty, Locations, MainWindow, Settings,
 };
-use crate::{ConfigProperty, Settings};
 
 pub fn load(ui: &MainWindow, app_state: &mut AppState) -> anyhow::Result<Config> {
     app_state.add_to_config_log("Checking configuration.", ui);

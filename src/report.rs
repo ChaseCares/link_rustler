@@ -11,9 +11,11 @@ use std::{
 
 use html_builder::{Buffer, Html5, Node};
 
-use crate::enums::{InvalidReason, ValidReason};
-use crate::structs::{DiffReport, Mode, PageData, ReportTableDataRow, State, Tables};
-use crate::{utilities::hash_string, get_loc};
+use crate::{
+    enums::{InvalidReason, ValidReason},
+    structs::{DiffReport, Mode, PageData, ReportTableDataRow, State, Tables},
+    {get_loc, utilities::hash_string},
+};
 
 const NUM_VALID: usize = 8;
 const NUM_INVALID: usize = 5;

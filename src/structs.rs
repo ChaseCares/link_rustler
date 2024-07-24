@@ -8,11 +8,11 @@ use slint::ComponentHandle;
 use tokio::time::Instant;
 use url::Url;
 
-use crate::utilities::{hash_img, hash_string};
-use crate::enums::{CustomError, InvalidReason, LinkType, ValidReason};
-use crate::MainWindow;
-
-use crate::{Settings, UpdateCheck};
+use crate::{
+    enums::{CustomError, InvalidReason, LinkType, ValidReason},
+    utilities::{hash_img, hash_string},
+    MainWindow, Settings, UpdateCheck,
+};
 
 #[derive(Parser, Debug)]
 #[clap(name = "Link Rustler", version = env!("CARGO_PKG_VERSION"), author = "ChaseCares")]
