@@ -189,7 +189,6 @@ pub async fn fire_up_and_setup_the_gecko(config: &Config) -> anyhow::Result<WebD
                 .context("Failed to find XPI file")?;
 
             let absolute_extension_path = file.into_os_string().into_string().unwrap();
-            // let absolute_extension_path = format!("{:?}", file);
             info!("Installing extension: {:?}", &absolute_extension_path);
 
             let tools = FirefoxTools::new(driver.handle.clone());
