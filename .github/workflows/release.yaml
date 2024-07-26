@@ -64,19 +64,19 @@ jobs:
         include:
           - build: linux-gnu
             os: ubuntu-latest
-            rust: nightly
+            rust: stable
             target: x86_64-unknown-linux-gnu
             strip: x86_64-linux-gnu-strip
 
           - build: macos-arm
             os: macos-latest
-            rust: nightly
+            rust: stable
             target: aarch64-apple-darwin
             command: cargo
 
           - build: macos-x86
             os: macos-latest
-            rust: nightly
+            rust: stable
             target: x86_64-apple-darwin
             command: cargo
 
