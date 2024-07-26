@@ -298,6 +298,7 @@ static OPERATING_SYSTEM: OnceLock<&str> = OnceLock::new();
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    println!("Hello, world!");
     let _guard = init_tracing();
 
     let args = Args::parse();
